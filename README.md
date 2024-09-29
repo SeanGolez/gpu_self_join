@@ -85,3 +85,4 @@ $./main test_dat.txt 1.0 2 3
 
 
 
+$./randomIndexing test_dat.txt 1.0 0.5 2
