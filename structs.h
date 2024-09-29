@@ -3,6 +3,7 @@
 #ifndef STRUCTS_H
 #define STRUCTS_H
 #include <vector>
+#include <unordered_map>
 #include <stdio.h>
 #include <iostream>
 
@@ -33,6 +34,11 @@ struct workArray{
 
 };
 
+struct workArrayPnt{
+		unsigned int pntIdx;
+		unsigned int numDistCalcs;
+
+};
 
 struct dim_reorder_sort
 {
