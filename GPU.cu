@@ -55,7 +55,7 @@ bool compareByPointValue(const key_val_sort &a, const key_val_sort &b)
 }
 
 
-unsigned long long callGPUBatchEst(unsigned int * DBSIZE, DTYPE* dev_database, DTYPE* dev_epsilon, unsigned int * dev_whichIndexPoints, struct grid * dev_grid, 
+unsigned long long callGPUBatchEst(unsigned int * DBSIZE, unsigned int * dev_DBSIZE, DTYPE* dev_database, DTYPE* dev_epsilon, unsigned int * dev_whichIndexPoints, struct grid * dev_grid, 
 	unsigned int * dev_indexLookupArr, struct gridCellLookup * dev_gridCellLookupArr, DTYPE* dev_minArr, 
 	unsigned int * dev_nCells, unsigned int * dev_nNonEmptyCells, unsigned int * dev_orderedQueryPntIDs, unsigned int * retNumBatches, unsigned int * retGPUBufferSize)
 {
@@ -191,7 +191,7 @@ unsigned long long callGPUBatchEst(unsigned int * DBSIZE, DTYPE* dev_database, D
 	
 
 	kernelNDGridIndexBatchEstimator<<< TOTALBLOCKSBATCHEST, BLOCKSIZE>>>(dev_debug1, dev_debug2, dev_N_batchEst, 
-		dev_sampleOffset, dev_database, dev_epsilon, dev_whichIndexPoints, dev_grid, dev_indexLookupArr, 
+		dev_sampleOffset, dev_DBSIZE, dev_database, dev_epsilon, dev_whichIndexPoints, dev_grid, dev_indexLookupArr, 
 		dev_gridCellLookupArr, dev_minArr, dev_nCells, dev_cnt_batchEst, dev_nNonEmptyCells, dev_orderedQueryPntIDs);
 		cout<<"\n** ERROR FROM KERNEL LAUNCH OF BATCH ESTIMATOR: "<<cudaGetLastError();
 		// find the size of the number of results
@@ -322,6 +322,15 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 
 	//copy database to the device
 	gpuErrchk(cudaMemcpy(dev_database, database, sizeof(DTYPE)*(GPUNUMDIM)*(*DBSIZE), cudaMemcpyHostToDevice));
+
+
+	unsigned int * dev_DBSIZE;
+	//allocate memory on device:
+	gpuErrchk(cudaMalloc( (void**)&dev_DBSIZE, sizeof(unsigned int)));
+	
+	//copy grid index to the device:
+	gpuErrchk(cudaMemcpy(dev_DBSIZE, DBSIZE, sizeof(unsigned int), cudaMemcpyHostToDevice));
+
 	///////////////////////////////////
 	//END COPY THE DATABASE TO THE GPU
 	///////////////////////////////////
@@ -619,13 +628,10 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 	unsigned int GPUBufferSize=0;
 
 	double tstartbatchest=omp_get_wtime();
-	estimatedNeighbors=callGPUBatchEst(DBSIZE, dev_database, dev_epsilon, dev_whichIndexPoints, dev_allGrids, dev_allIndexLookupArr, dev_allGridCellLookupArr, dev_allMinArr, dev_allNCells, dev_allNNonEmptyCells, dev_orderedQueryPntIDs, &numBatches, &GPUBufferSize);	
+	estimatedNeighbors=callGPUBatchEst(DBSIZE, dev_DBSIZE, dev_database, dev_epsilon, dev_whichIndexPoints, dev_allGrids, dev_allIndexLookupArr, dev_allGridCellLookupArr, dev_allMinArr, dev_allNCells, dev_allNNonEmptyCells, dev_orderedQueryPntIDs, &numBatches, &GPUBufferSize);	
 	double tendbatchest=omp_get_wtime();
 	printf("\nTime to estimate batches: %f",tendbatchest - tstartbatchest);
 	printf("\nIn Calling fn: Estimated neighbors: %llu, num. batches: %d, GPU Buffer size: %d",estimatedNeighbors, numBatches,GPUBufferSize);
-	
-	printf("\nExited after batch estimator\n");
-	return;
 
 	//initialize new neighbortable. resize to the number of batches	
 	//Only use this if using unicomp
@@ -851,7 +857,7 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 			//execute kernel	
 			//0 is shared memory pool
 			kernelNDGridIndexGlobal<<< TOTALBLOCKS, BLOCKSIZE, 0, stream[tid]>>>(dev_debug1, dev_debug2, &dev_N[tid], 
-		&dev_offset[tid], &dev_batchNumber[tid], dev_database, dev_epsilon, dev_whichIndexPoints, dev_allGrids, dev_allIndexLookupArr, 
+		&dev_offset[tid], &dev_batchNumber[tid], dev_DBSIZE, dev_database, dev_epsilon, dev_whichIndexPoints, dev_allGrids, dev_allIndexLookupArr, 
 		dev_allGridCellLookupArr, dev_allMinArr, dev_allNCells, &dev_cnt[tid], dev_allNNonEmptyCells, dev_pointIDKey[tid], dev_pointInDistValue[tid], dev_orderedQueryPntIDs, dev_workCounts);
 
 			// errCode=cudaDeviceSynchronize();
@@ -1079,6 +1085,7 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 
 	//free the data on the device
 	cudaFree(dev_database);
+	cudaFree(dev_DBSIZE);
 	cudaFree(dev_debug1);
 	cudaFree(dev_debug2);
 	cudaFree(dev_epsilon);

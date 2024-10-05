@@ -288,7 +288,7 @@ int main(int argc, char *argv[])
 
 	double tstart = omp_get_wtime();
 
-	// distanceTableNDGridBatches(&NDdataPoints, &epsilon, whichIndexPoints, allIndex, allGridCellLookupArr, allNNonEmptyCells, allMinArr, allNCells, allIndexLookupArr, neighborTable, &pointersToNeighbors, &totalNeighbors, workCounts);
+	distanceTableNDGridBatches(&NDdataPoints, &epsilon, whichIndexPoints, allIndex, allGridCellLookupArr, allNNonEmptyCells, allMinArr, allNCells, allIndexLookupArr, neighborTable, &pointersToNeighbors, &totalNeighbors, workCounts);
 
 	double tend = omp_get_wtime();
 
@@ -296,9 +296,6 @@ int main(int argc, char *argv[])
 
 	printf("\nTime: %f\n", (tend - tstart));
 
-	// *** TODO: Test output of ALL ARRAYS with offset and compare to original with offset ***
-
-	/*
 
 	gpu_stats << totalTime << ", " << inputFname << ", " << epsilon << ", " << ", GPUNUMDIM/NUMINDEXEDDIM/ILP/STAMP/SORT/REORDER/SHORTCIRCUIT/QUERYREORDER/DTYPE(float/double): " << GPUNUMDIM << ", " << NUMINDEXEDDIM << ", " << ILP << ", " << STAMP << ", " << SORT << ", " << REORDER << ", " << SHORTCIRCUIT << ", " << QUERYREORDER << ", " << STR(DTYPE) << endl;
 	gpu_stats.close();
@@ -306,7 +303,6 @@ int main(int argc, char *argv[])
 #if PRINTNEIGHBORTABLE == 1
 	printNeighborTable(NDdataPoints.size(), neighborTable);
 #endif
-	*/
 }
 #endif // end #if not Python (standard C version)
 
