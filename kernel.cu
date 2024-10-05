@@ -526,8 +526,8 @@ for (int i=0; i<GPUNUMDIM; i++){
 	point[i]=database[pointID+i];	
 }
 
-unsigned int whichIndex = whichIndexPoints[pointIdx];
-
+// unsigned int whichIndex = whichIndexPoints[pointIdx];
+unsigned int whichIndex = 1;
 
 //calculate the coords of the Cell for the point
 //and the min/max ranges in each dimension

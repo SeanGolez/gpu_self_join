@@ -624,6 +624,8 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 	printf("\nTime to estimate batches: %f",tendbatchest - tstartbatchest);
 	printf("\nIn Calling fn: Estimated neighbors: %llu, num. batches: %d, GPU Buffer size: %d",estimatedNeighbors, numBatches,GPUBufferSize);
 	
+	printf("\nExited after batch estimator\n");
+	return;
 
 	//initialize new neighbortable. resize to the number of batches	
 	//Only use this if using unicomp
