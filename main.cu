@@ -158,6 +158,14 @@ int main(int argc, char *argv[])
 	std::vector<struct gridCellLookup> allGridCellLookupArrVec;
 	unsigned int *allIndexLookupArr = new unsigned int[NDdataPoints.size() * NUM_RAND_INDEXES];
 
+	// maps each non empty cell to its adjacent cells, including itself
+	// get all incrementors to find adjacent cells (vectors to add to position to get each adjecent cell)
+	std::vector<std::vector<int>> incrementorVects;
+	std::vector<int> incrementors_set = {-1, 0, 1};
+	std::vector<std::vector<int>> sets(NUMINDEXEDDIM, incrementors_set);
+	std::vector<int> current(sets.size());
+	generateCombinations(sets, current, 0, incrementorVects);
+
 	// define random engine
     std::random_device rd;
 	// initialize generator
@@ -209,17 +217,8 @@ int main(int argc, char *argv[])
 		struct grid *index;						  // allocate in the populateDNGridIndexAndLookupArray -- only index the non-empty cells
 		struct gridCellLookup *gridCellLookupArr; // allocate in the populateDNGridIndexAndLookupArray -- list of non-empty cells
 
-
 		// ids of the elements in the database that are found in each grid cell
 		unsigned int *indexLookupArr = new unsigned int[NDdataPoints.size()];
-
-		// maps each non empty cell to its adjacent cells, including itself
-		// get all incrementors to find adjacent cells
-		std::vector<std::vector<int>> incrementorVects;
-		std::vector<int> incrementors_set = {-1, 0, 1};
-		std::vector<std::vector<int>> sets(NUMINDEXEDDIM, incrementors_set);
-		std::vector<int> current(sets.size());
-		generateCombinations(sets, current, 0, incrementorVects);
 
 		// number of distance calculations per point
 		std::vector<workArrayPnt> totalPointsWork;
@@ -742,6 +741,7 @@ void ReorderByDimension(std::vector<std::vector<DTYPE>> *NDdataPoints)
 	printf("\nTime to reorder cols by variance (this gets added to the time because its an optimization): %f", timecomponent);
 }
 
+// computes the number of distance calculations for each point
 void computeNumDistanceCalcs(std::vector<workArrayPnt> *totalPointsWork, unsigned int *nNonEmptyCells, gridCellLookup *gridCellLookupArr, grid *index, std::unordered_map<uint64_t, std::vector<uint64_t>> *uniqueGridAdjacentCells, std::vector<std::vector<DTYPE>> *NDdataPoints, DTYPE *minArr, unsigned int *nCells, DTYPE &epsilon)
 {
 	// number of points in each cell
@@ -794,6 +794,7 @@ void computeNumDistanceCalcs(std::vector<workArrayPnt> *totalPointsWork, unsigne
 	return;
 }
 
+// finds the adjacent cells of cell (including the cell itself)
 void findAdjacentCellIDs(std::unordered_map<uint64_t, std::vector<uint64_t>> &uniqueGridAdjacentCells, std::vector<std::vector<int>> &incrementorVects, std::vector<uint64_t> &uniqueGridCellLinearIdsVect, unsigned int *nCells)
 {
 	unsigned int pointIdx[NUMINDEXEDDIM];
