@@ -6,11 +6,11 @@
 #Build binaries for the code in the paper
 #see params.h for the parameters
 
-SOURCES = GPU.cu kernel.cu import_dataset.cpp tree_index.cpp randomIndexing.cu
+SOURCES = GPU.cu kernel.cu import_dataset.cpp tree_index.cpp main.cu
 OBJECTS = import_dataset.o tree_index.o 
-CUDAOBJECTS = GPU.o kernel.o randomIndexing.o
+CUDAOBJECTS = GPU.o kernel.o main.o
 CC = nvcc
-EXECUTABLE = randomIndexing
+EXECUTABLE = main
 
 
 
@@ -38,8 +38,8 @@ kernel.o: kernel.cu params.h
 GPU.o: GPU.cu params.h
 	$(CC) $(FLAGS) $(CFLAGS) $(COMPUTE_CAPABILITY_FLAGS) GPU.cu 	
 
-randomIndexing.o: randomIndexing.cu params.h
-	$(CC) $(FLAGS) $(CFLAGS) $(COMPUTE_CAPABILITY_FLAGS) randomIndexing.cu
+main.o: main.cu params.h
+	$(CC) $(FLAGS) $(CFLAGS) $(COMPUTE_CAPABILITY_FLAGS) main.cu
 
 
 
@@ -85,7 +85,7 @@ clean:
 	rm $(CUDAOBJECTS)
 	rm libgpuselfjoin.so
 	rm main
-	rm randomIndexing
+	rm main
 
 
 

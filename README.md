@@ -81,8 +81,4 @@ High dimensionality (likely do not want to enable these at low-dimensionality, b
 
 A small dataset has been included for testing purposes. If you run the 2-D dataset test_data.txt with epsilon=1.0, with no optimizations and store the data as single precision floats you should obtain a total of 27982028 neighbors. 
 
-$./main test_dat.txt 1.0 2 3
-
-
-
-$./randomIndexing test_dat.txt 1.0 0.5 2
+$./main test_dat.txt 1.0 0.5 2
