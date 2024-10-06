@@ -1,6 +1,7 @@
 #include "kernel.h"
 #include "structs.h"
 #include <math.h>	
+#include <algorithm>
 #include <thrust/execution_policy.h>
 #include <thrust/binary_search.h>
 #include "params.h"
@@ -74,6 +75,39 @@ __device__ uint64_t getLinearID_nDimensionsGPU(unsigned int * indexes, unsigned 
 	return offset;
 }
 
+__device__ void getNDimIndexesFromLinearIdxGPU(unsigned int * indexes, unsigned int * dimLen, unsigned int nDimensions, uint64_t linearId) {
+	// do the process to get linear id but backwards
+	for (int i=0; i<nDimensions; i++){
+  	indexes[i] = linearId % dimLen[i];
+	linearId /= dimLen[i];
+	}
+}
+
+// Kernel for binary search
+__device__ int binarySearch(uint64_t* d_array, unsigned int size, uint64_t value) {
+    int low = 0;
+    int high = size - 1;
+
+    while (low <= high) {
+        int mid = low + (high - low) / 2;
+
+		// Check if x is present at mid
+        if (d_array[mid] == value) {
+            return mid;
+		}
+        if (d_array[mid] < value) {
+			// Move to the right half
+            low = mid + 1; 
+        } else {
+			// Move to the left half
+            high = mid - 1;
+        }
+    }
+
+	// return cell not found
+	return -1;
+}
+
 
 //unique key array on the GPU
 __global__ void kernelUniqueKeys(int * pointIDKey, unsigned int * N, int * uniqueKey, int * uniqueKeyPosition, unsigned int * cnt)
@@ -125,15 +159,12 @@ __global__ void kernelUniqueKeys(int * pointIDKey, unsigned int * N, int * uniqu
 // unsigned int * nCells –The total number of cells in each dimension (if all were indexed), can compute the spatial extent, with minArr[0]+nCells[0]*epsilon, in the 1st dimension
 // unsigned int * cnt – the result set size 	
 // unsigned int * nNonEmptyCells – the number of non-empty cells in total, this is the size of the gridCellLookupArr
-//  unsigned int * gridCellNDMask – an array that stores the non-empty cells in each dimension, used for filtering
-// unsigned int * gridCellNDMaskOffsets – an array that stores the offsets into gridCellNDMask of the non-empty cells in each dimension
 // int * pointIDKey, int * pointInDistVal - result set to be sorted as key/value pairs
 
 __global__ void kernelNDGridIndexGlobal(unsigned int *debug1, unsigned int *debug2, unsigned int *N,  
-	unsigned int * offset, unsigned int *batchNum, DTYPE* database, DTYPE* epsilon, struct grid * index, unsigned int * indexLookupArr, 
-	struct gridCellLookup * gridCellLookupArr, DTYPE* minArr, unsigned int * nCells, unsigned int * cnt, 
-	unsigned int * nNonEmptyCells,  unsigned int * gridCellNDMask, unsigned int * gridCellNDMaskOffsets,
-	int * pointIDKey, int * pointInDistVal, unsigned int * orderedQueryPntIDs, CTYPE* workCounts)
+	unsigned int * offset, unsigned int *batchNum, unsigned int * DBSIZE, DTYPE* database, DTYPE* epsilon, unsigned int *whichIndexPoints, struct grid * allIndex, unsigned int * allIndexLookupArr, 
+	struct gridCellLookup * allGridCellLookupArr, DTYPE* allMinArr, unsigned int * allNCells, unsigned int * cnt, 
+	unsigned int * allNNonEmptyCells, int * pointIDKey, int * pointInDistVal, unsigned int * orderedQueryPntIDs, CTYPE* workCounts)
 {
 
 unsigned int tid=threadIdx.x+ (blockIdx.x*BLOCKSIZE); 
@@ -175,87 +206,19 @@ for (int i=0; i<GPUNUMDIM; i++){
 }
 
 
+unsigned int whichIndex = whichIndexPoints[pointIdx];
+
 //calculate the coords of the Cell for the point
 //and the min/max ranges in each dimension
 unsigned int nDCellIDs[NUMINDEXEDDIM];
 unsigned int nDMinCellIDs[NUMINDEXEDDIM];
 unsigned int nDMaxCellIDs[NUMINDEXEDDIM];
 for (int i=0; i<NUMINDEXEDDIM; i++){
-	nDCellIDs[i]=(point[i]-minArr[i])/(*epsilon);
+	nDCellIDs[i]=(point[i]-allMinArr[i + (whichIndex * NUMINDEXEDDIM)])/(*epsilon);
 	nDMinCellIDs[i]=max(0,nDCellIDs[i]-1); //boundary conditions (don't go beyond cell 0)
-	nDMaxCellIDs[i]=min(nCells[i]-1,nDCellIDs[i]+1); //boundary conditions (don't go beyond the maximum number of cells)
+	nDMaxCellIDs[i]=min(allNCells[i + (whichIndex * NUMINDEXEDDIM)]-1,nDCellIDs[i]+1); //boundary conditions (don't go beyond the maximum number of cells)
 
 }
-
-
-
-///////////////////////////
-//Take the intersection of the ranges for each dimension between
-//the point and the filtered set of cells in each dimension 
-//Ranges in a given dimension that have points in them that are non-empty in a dimension will be tested 
-///////////////////////////
-
-unsigned int rangeFilteredCellIdsMin[NUMINDEXEDDIM];
-unsigned int rangeFilteredCellIdsMax[NUMINDEXEDDIM];
-//compare the point's range of cell IDs in each dimension to the filter mask
-//only 2 possible values (you always find the middle point in the range), because that's the cell of the point itself
-bool foundMin=0;
-bool foundMax=0;
-
-	//we go through each dimension and compare the range of the query points min/max cell ids to the filtered ones
-	//find out which ones in the range exist based on the min/max
-	//then determine the appropriate ranges
-	for (int i=0; i<NUMINDEXEDDIM; i++)
-	{
-		foundMin=0;
-		foundMax=0;
-		
-		if(thrust::binary_search(thrust::seq, gridCellNDMask+ gridCellNDMaskOffsets[(i*2)],
-			gridCellNDMask+ gridCellNDMaskOffsets[(i*2)+1]+1,nDMinCellIDs[i])){ //extra +1 here is because we include the upper bound
-			foundMin=1;
-		}
-		if(thrust::binary_search(thrust::seq, gridCellNDMask+ gridCellNDMaskOffsets[(i*2)],
-			gridCellNDMask+ gridCellNDMaskOffsets[(i*2)+1]+1,nDMaxCellIDs[i])){ //extra +1 here is because we include the upper bound
-			foundMax=1;
-		}
-
-		
-
-		// cases:
-		// found the min and max
-		// found the min and not max
-		//found the max and not the min
-		//you don't find the min or max -- then only check the mid
-		//you always find the mid because it's in the cell of the point you're looking for
-
-		if (foundMin==1 && foundMax==1){
-			rangeFilteredCellIdsMin[i]=nDMinCellIDs[i];
-			rangeFilteredCellIdsMax[i]=nDMaxCellIDs[i];
-		}
-		else if (foundMin==1 && foundMax==0){
-			rangeFilteredCellIdsMin[i]=nDMinCellIDs[i];
-			rangeFilteredCellIdsMax[i]=nDMinCellIDs[i]+1;
-			//printf("\nmin not max");
-		}
-		else if (foundMin==0 && foundMax==1){
-			rangeFilteredCellIdsMin[i]=nDMinCellIDs[i]+1;	
-			rangeFilteredCellIdsMax[i]=nDMaxCellIDs[i];
-		}
-		//dont find either min or max
-		//get middle value only
-		else{
-			rangeFilteredCellIdsMin[i]=nDMinCellIDs[i]+1;	
-			rangeFilteredCellIdsMax[i]=nDMinCellIDs[i]+1;	
-		}
-
-		
-		
-	}		
-
-
-	///////////////////////////////////////
-	//End taking intersection
-	//////////////////////////////////////	
 	
         unsigned int indexes[NUMINDEXEDDIM];
         unsigned int loopRng[NUMINDEXEDDIM];
@@ -289,24 +252,24 @@ bool foundMax=0;
 	} //end loop body
 #else
 
-	for (loopRng[0]=rangeFilteredCellIdsMin[0]; loopRng[0]<=rangeFilteredCellIdsMax[0]; loopRng[0]++)
-	for (loopRng[1]=rangeFilteredCellIdsMin[1]; loopRng[1]<=rangeFilteredCellIdsMax[1]; loopRng[1]++)
+	for (loopRng[0]=nDMinCellIDs[0]; loopRng[0]<=nDMaxCellIDs[0]; loopRng[0]++)
+	for (loopRng[1]=nDMinCellIDs[1]; loopRng[1]<=nDMaxCellIDs[1]; loopRng[1]++)
 	#include "kernelloops.h"					
 	{ //beginning of loop body
 	
 	for (int x=0; x<NUMINDEXEDDIM; x++){
 	indexes[x]=loopRng[x];	
 	}
-		evaluateCell(nCells, indexes, gridCellLookupArr, nNonEmptyCells, database, epsilon, index, indexLookupArr, point, cnt, pointIDKey, pointInDistVal, pointIdx, false, nDCellIDs, workCounts);
+		evaluateCell(&whichIndex, N, allNCells, indexes, allGridCellLookupArr, allNNonEmptyCells, DBSIZE, database, epsilon, allIndex, allIndexLookupArr, point, cnt, pointIDKey, pointInDistVal, pointIdx, false, nDCellIDs, workCounts);
 	
 	} //end loop body
 #endif
 
 }
 
-__forceinline__ __device__ void evalPoint(unsigned int* indexLookupArr, int k, DTYPE* database, DTYPE* epsilon, DTYPE* point, unsigned int* cnt, int* pointIDKey, int* pointInDistVal, int pointIdx, bool differentCell) {
+__forceinline__ __device__ void evalPoint(unsigned int* whichIndex, unsigned int *N, unsigned int* allIndexLookupArr, int k, unsigned int * DBSIZE, DTYPE* database, DTYPE* epsilon, DTYPE* point, unsigned int* cnt, int* pointIDKey, int* pointInDistVal, int pointIdx, bool differentCell) {
 	
-	unsigned int dataIdx=indexLookupArr[k];
+	unsigned int dataIdx=allIndexLookupArr[k+((*whichIndex)*(*DBSIZE))];
 
 	//If we use ILP
 	#if ILP>0
@@ -378,24 +341,39 @@ __forceinline__ __device__ void evalPoint(unsigned int* indexLookupArr, int k, D
 
 
 
-__device__ void evaluateCell(unsigned int* nCells, unsigned int* indexes, struct gridCellLookup * gridCellLookupArr, unsigned int* nNonEmptyCells, DTYPE* database, DTYPE* epsilon, struct grid * index, unsigned int * indexLookupArr, DTYPE* point, unsigned int* cnt, int* pointIDKey, int* pointInDistVal, int pointIdx, bool differentCell, unsigned int* nDCellIDs, CTYPE* workCounts) {
+__device__ void evaluateCell(unsigned int* whichIndex, unsigned int *N, unsigned int* allNCells, unsigned int* indexes, struct gridCellLookup * allGridCellLookupArr, unsigned int* allNNonEmptyCells, unsigned int * DBSIZE, DTYPE* database, DTYPE* epsilon, struct grid * allIndex, unsigned int * allIndexLookupArr, DTYPE* point, unsigned int* cnt,int* pointIDKey, int* pointInDistVal, int pointIdx, bool differentCell, unsigned int* nDCellIDs, CTYPE* workCounts) {
 
 
 #if COUNTMETRICS == 1
 			atomicAdd(&workCounts[1],int(1));
 #endif
 
-        uint64_t calcLinearID=getLinearID_nDimensionsGPU(indexes, nCells, NUMINDEXEDDIM);
-        //compare the linear ID with the gridCellLookupArr to determine if the cell is non-empty: this can happen because one point says 
-        //a cell in a particular dimension is non-empty, but that's because it was related to a different point (not adjacent to the query point)
+	unsigned int nCells[NUMINDEXEDDIM];
+	for (int i=0; i<NUMINDEXEDDIM; i++){
+		nCells[i] = allNCells[i+((*whichIndex)*NUMINDEXEDDIM)];
+	}
 
-        struct gridCellLookup tmp;
-        tmp.gridLinearID=calcLinearID;
-        //find if the cell is non-empty
-        if (thrust::binary_search(thrust::seq, gridCellLookupArr, gridCellLookupArr+ (*nNonEmptyCells), gridCellLookup(tmp))){
+	uint64_t calcLinearID=getLinearID_nDimensionsGPU(indexes, nCells, NUMINDEXEDDIM);
+
+	//compare the linear ID with the gridCellLookupArr to determine if the cell is non-empty: this can happen because one point says 
+	//a cell in a particular dimension is non-empty, but that's because it was related to a different point (not adjacent to the query point)
+
+	struct gridCellLookup tmp;
+	tmp.gridLinearID=calcLinearID;
+
+	// increment startGridPtr to begining of grid for index
+	gridCellLookup * startGridPtr = allGridCellLookupArr;
+	grid * startIndexPtr = allIndex;
+	for(int i = 0; i<(*whichIndex); i++)
+	{
+		startGridPtr += allNNonEmptyCells[i];
+		startIndexPtr += allNNonEmptyCells[i];
+	}
+	
+	if (thrust::binary_search(thrust::seq, startGridPtr, startGridPtr+(allNNonEmptyCells[(*whichIndex)]), gridCellLookup(tmp))){
 
         //compute the neighbors for the adjacent non-empty cell
-        struct gridCellLookup * resultBinSearch=thrust::lower_bound(thrust::seq, gridCellLookupArr, gridCellLookupArr+(*nNonEmptyCells), gridCellLookup(tmp));
+        struct gridCellLookup * resultBinSearch=thrust::lower_bound(thrust::seq, startGridPtr, startGridPtr+(allNNonEmptyCells[(*whichIndex)]), gridCellLookup(tmp));
         unsigned int GridIndex=resultBinSearch->idx;
 #if SORT==1
 	int sortedDim;
@@ -468,8 +446,8 @@ __device__ void evaluateCell(unsigned int* nCells, unsigned int* indexes, struct
 
 // Brute force method if SORTED != 1
 #else
-	for (int k=index[GridIndex].indexmin; k<=index[GridIndex].indexmax; k++){
-		evalPoint(indexLookupArr, k, database, epsilon, point, cnt, pointIDKey, pointInDistVal, pointIdx, differentCell);
+	for (int k=(startIndexPtr+GridIndex)->indexmin; k<=(startIndexPtr+GridIndex)->indexmax; k++){
+		evalPoint(whichIndex, N, allIndexLookupArr, k, DBSIZE, database, epsilon, point, cnt, pointIDKey, pointInDistVal, pointIdx, differentCell);
 #if COUNTMETRICS == 1
 			atomicAdd(&workCounts[0],1);
 #endif
@@ -520,17 +498,19 @@ return;
 
 //for descriptions of the parameters, see regular kernel that computes the result (not the batch estimator)
 __global__ void kernelNDGridIndexBatchEstimator(unsigned int *debug1, unsigned int *debug2, unsigned int *N,  
-	unsigned int * sampleOffset, DTYPE* database, DTYPE* epsilon, struct grid * index, unsigned int * indexLookupArr, 
-	struct gridCellLookup * gridCellLookupArr, DTYPE* minArr, unsigned int * nCells, unsigned int * cnt, 
-	unsigned int * nNonEmptyCells,  unsigned int * gridCellNDMask, unsigned int * gridCellNDMaskOffsets, unsigned int * orderedQueryPntIDs)
+	unsigned int * sampleOffset, unsigned int * DBSIZE, DTYPE* database, DTYPE* epsilon, unsigned int * whichIndexPoints, struct grid * allIndex, unsigned int * allIndexLookupArr, 
+	struct gridCellLookup * allGridCellLookupArr, DTYPE* allMinArr, unsigned int * allNCells, unsigned int * cnt, 
+	unsigned int * allNNonEmptyCells, unsigned int * orderedQueryPntIDs)
 {
 
 unsigned int tid=threadIdx.x+ (blockIdx.x*BLOCKSIZE); 
+
 
 if (tid>=*N){
 	return;
 }
 
+unsigned int pointIdx = tid*(*sampleOffset);
 
 //If reordering the queries by the amount of work
 #if QUERYREORDER==1
@@ -542,7 +522,7 @@ unsigned int pointID=(GPUNUMDIM)*pointIdx;
 
 //If standard execution without reordering the queries by the amount of work
 #if QUERYREORDER==0
-unsigned int pointID=tid*(*sampleOffset)*(GPUNUMDIM);
+unsigned int pointID=pointIdx*(GPUNUMDIM);
 #endif
 
 //make a local copy of the point
@@ -551,94 +531,25 @@ for (int i=0; i<GPUNUMDIM; i++){
 	point[i]=database[pointID+i];	
 }
 
+unsigned int whichIndex = whichIndexPoints[pointIdx];
+
 //calculate the coords of the Cell for the point
 //and the min/max ranges in each dimension
 unsigned int nDCellIDs[NUMINDEXEDDIM];
 unsigned int nDMinCellIDs[NUMINDEXEDDIM];
 unsigned int nDMaxCellIDs[NUMINDEXEDDIM];
 for (int i=0; i<NUMINDEXEDDIM; i++){
-	nDCellIDs[i]=(point[i]-minArr[i])/(*epsilon);
+	nDCellIDs[i]=(point[i]-allMinArr[i + (whichIndex * NUMINDEXEDDIM)])/(*epsilon);
 	nDMinCellIDs[i]=max(0,nDCellIDs[i]-1); //boundary conditions (don't go beyond cell 0)
-	nDMaxCellIDs[i]=min(nCells[i]-1,nDCellIDs[i]+1); //boundary conditions (don't go beyond the maximum number of cells)
+	nDMaxCellIDs[i]=min(allNCells[i + (whichIndex * NUMINDEXEDDIM)]-1,nDCellIDs[i]+1); //boundary conditions (don't go beyond the maximum number of cells)
 
 }
-
-
-
-///////////////////////////
-//Take the intersection of the ranges for each dimension between
-//the point and the filtered set of cells in each dimension 
-//Ranges in a given dimension that have points in them that are non-empty in a dimension will be tested 
-///////////////////////////
-
-unsigned int rangeFilteredCellIdsMin[NUMINDEXEDDIM];
-unsigned int rangeFilteredCellIdsMax[NUMINDEXEDDIM];
-//compare the point's range of cell IDs in each dimension to the filter mask
-//only 2 possible values (you always find the middle point in the range), because that's the cell of the point itself
-bool foundMin=0;
-bool foundMax=0;
-
-//we go through each dimension and compare the range of the query points min/max cell ids to the filtered ones
-	//find out which ones in the range exist based on the min/max
-	//then determine the appropriate ranges
-	for (int i=0; i<NUMINDEXEDDIM; i++)
-	{
-		foundMin=0;
-		foundMax=0;
-		
-		if(thrust::binary_search(thrust::seq, gridCellNDMask+ gridCellNDMaskOffsets[(i*2)],
-			gridCellNDMask+ gridCellNDMaskOffsets[(i*2)+1]+1,nDMinCellIDs[i])){ //extra +1 here is because we include the upper bound
-			foundMin=1;
-		}
-		if(thrust::binary_search(thrust::seq, gridCellNDMask+ gridCellNDMaskOffsets[(i*2)],
-			gridCellNDMask+ gridCellNDMaskOffsets[(i*2)+1]+1,nDMaxCellIDs[i])){ //extra +1 here is because we include the upper bound
-			foundMax=1;
-		}
-
-		
-
-		// cases:
-		// found the min and max
-		// found the min and not max
-		//found the max and not the min
-		//you don't find the min or max -- then only check the mid
-		//you always find the mid because it's in the cell of the point you're looking for
-
-		//NEED TO OPTIMIZE STILL
-		if (foundMin==1 && foundMax==1){
-			rangeFilteredCellIdsMin[i]=nDMinCellIDs[i];
-			rangeFilteredCellIdsMax[i]=nDMaxCellIDs[i];
-		}
-		else if (foundMin==1 && foundMax==0){
-			rangeFilteredCellIdsMin[i]=nDMinCellIDs[i];
-			rangeFilteredCellIdsMax[i]=nDMinCellIDs[i]+1;
-		}
-		else if (foundMin==0 && foundMax==1){
-			rangeFilteredCellIdsMin[i]=nDMinCellIDs[i]+1;	
-			rangeFilteredCellIdsMax[i]=nDMaxCellIDs[i];
-		}
-		//dont find either min or max
-		//get middle value only
-		else{
-			rangeFilteredCellIdsMin[i]=nDMinCellIDs[i]+1;	
-			rangeFilteredCellIdsMax[i]=nDMinCellIDs[i]+1;	
-		}
-		
-	}		
-
-
-	///////////////////////////////////////
-	//End taking intersection
-	//////////////////////////////////////	
-	
-
-
 
 	unsigned int indexes[NUMINDEXEDDIM];
 	unsigned int loopRng[NUMINDEXEDDIM];
 
-	for (loopRng[0]=rangeFilteredCellIdsMin[0]; loopRng[0]<=rangeFilteredCellIdsMax[0]; loopRng[0]++)
-	for (loopRng[1]=rangeFilteredCellIdsMin[1]; loopRng[1]<=rangeFilteredCellIdsMax[1]; loopRng[1]++)
+	for (loopRng[0]=nDMinCellIDs[0]; loopRng[0]<=nDMaxCellIDs[0]; loopRng[0]++)
+	for (loopRng[1]=nDMinCellIDs[1]; loopRng[1]<=nDMaxCellIDs[1]; loopRng[1]++)
 	#include "kernelloops.h"						
 	{ //beginning of loop body
 	
@@ -653,24 +564,35 @@ bool foundMax=0;
 	// 	printf("\ndim: %d, indexes: %d",x, indexes[x]);
 	}
 	
+	unsigned int nCells[NUMINDEXEDDIM];
+	for (int i=0; i<NUMINDEXEDDIM; i++){
+		nCells[i] = allNCells[i+(whichIndex*NUMINDEXEDDIM)];
+	}
 
-	
 	uint64_t calcLinearID=getLinearID_nDimensionsGPU(indexes, nCells, NUMINDEXEDDIM);
+
 	//compare the linear ID with the gridCellLookupArr to determine if the cell is non-empty: this can happen because one point says 
 	//a cell in a particular dimension is non-empty, but that's because it was related to a different point (not adjacent to the query point)
 
-	
-
 	struct gridCellLookup tmp;
 	tmp.gridLinearID=calcLinearID;
-	if (thrust::binary_search(thrust::seq, gridCellLookupArr, gridCellLookupArr+ (*nNonEmptyCells), gridCellLookup(tmp))){
-		
-		struct gridCellLookup * resultBinSearch=thrust::lower_bound(thrust::seq, gridCellLookupArr, gridCellLookupArr+(*nNonEmptyCells), gridCellLookup(tmp));
+
+	// increment startGridPtr to begining of grid for index
+	gridCellLookup * startGridPtr = allGridCellLookupArr;
+	grid * startIndexPtr = allIndex;
+	for(int i = 0; i<whichIndex; i++)
+	{
+		startGridPtr += allNNonEmptyCells[i];
+		startIndexPtr += allNNonEmptyCells[i];
+	}
+	
+	if (thrust::binary_search(thrust::seq, startGridPtr, startGridPtr+(allNNonEmptyCells[whichIndex]), gridCellLookup(tmp))){	
+		struct gridCellLookup * resultBinSearch=thrust::lower_bound(thrust::seq, startGridPtr, startGridPtr+(allNNonEmptyCells[whichIndex]), gridCellLookup(tmp));
 		unsigned int GridIndex=resultBinSearch->idx;
 
-		for (int k=index[GridIndex].indexmin; k<=index[GridIndex].indexmax; k++){
+		for (int k=(startIndexPtr+GridIndex)->indexmin; k<=(startIndexPtr+GridIndex)->indexmax; k++){
 				DTYPE runningTotalDist=0;
-				unsigned int dataIdx=indexLookupArr[k];
+				unsigned int dataIdx=allIndexLookupArr[k+(whichIndex*(*DBSIZE))];
 
 				
 
@@ -690,5 +612,127 @@ bool foundMax=0;
 	}
 
 	} //end loop body
+}
 
+__global__ void kernelInitEnumerateDB(unsigned int * databaseVal, unsigned int *N)
+{
+
+
+	unsigned int tid=threadIdx.x+ (blockIdx.x*BLOCKSIZE); 
+
+
+	if (tid>=*N){
+		return;
+	}
+
+	databaseVal[tid]=tid;	
+
+		
+}
+
+__global__ void kernelIndexComputeNonemptyCells(DTYPE* database, unsigned int *N, DTYPE* epsilon, DTYPE* minArr, unsigned int * nCells, uint64_t * pointCellArr)
+{
+
+
+	unsigned int tid=threadIdx.x+ (blockIdx.x*BLOCKSIZE); 
+
+
+	if (tid>=*N){
+		return;
+	}
+
+	// printf("\n%u",tid); 
+
+	unsigned int pointID=tid*(GPUNUMDIM);
+
+	unsigned int tmpNDCellIdx[NUMINDEXEDDIM];
+	for (int j=0; j<NUMINDEXEDDIM; j++){
+		tmpNDCellIdx[j]=((database[pointID+j]-minArr[j])/(*epsilon));
+	}
+	uint64_t linearID=getLinearID_nDimensionsGPU(tmpNDCellIdx, nCells, NUMINDEXEDDIM);
+
+	pointCellArr[tid]=linearID;	
+
+		
+}
+
+
+__global__ void kernelIndexComputeAdjacentCells(uint64_t * celllDistCalcArr, uint64_t * uniqueCellArr, uint64_t * cellNumPointsArr, unsigned int * nCells, unsigned int * nNonEmptyCells, int *incrementors, unsigned int * nAdjCells)
+{
+	unsigned int tid=threadIdx.x+ (blockIdx.x*BLOCKSIZE); 
+
+	unsigned int numDistCalcs = 0;
+	int tempIdx;
+
+	// make sure thread is within unique cell count
+	if (tid>=*nNonEmptyCells){
+		return;
+	}
+
+	// get value of cell linearID for this thread
+	uint64_t linearID = uniqueCellArr[tid];
+
+	unsigned int pointIdx[NUMINDEXEDDIM];
+
+	// get index of grid point
+	getNDimIndexesFromLinearIdxGPU(pointIdx, nCells, NUMINDEXEDDIM, linearID);
+
+	// check that linear ID does not already have adjacent cells caluclated for it
+	unsigned int tempAdjCellIdx[NUMINDEXEDDIM];
+
+	// loop through each incrementor vector
+	for (int i=0; i<(*nAdjCells); i++)
+	{
+		// loop thhrough each entry
+		for (int j=0; j<NUMINDEXEDDIM; j++)
+		{
+			// get adjacent cell index
+			tempAdjCellIdx[j] = pointIdx[j] + incrementors[(i * NUMINDEXEDDIM) + j];
+		}
+		// convert index back to cell id
+		uint64_t adjLinearID=getLinearID_nDimensionsGPU(tempAdjCellIdx, nCells, NUMINDEXEDDIM);
+
+		// test if cell is nonempty
+		tempIdx = binarySearch(uniqueCellArr, *nNonEmptyCells, adjLinearID);
+		if(tempIdx != -1)
+		{
+			// add number of points in the cell to num distance calcs
+			numDistCalcs += cellNumPointsArr[tempIdx];
+		}
+	}
+
+	// set number of dist calcs
+	celllDistCalcArr[tid] = numDistCalcs;
+}
+
+
+__global__ void kernelMapPointToNumDistCalcs(uint64_t * pointDistCalcArr, DTYPE* database, unsigned int *N, DTYPE* epsilon, DTYPE* minArr, unsigned int * nCells, uint64_t *cellDistCalcArr,  uint64_t * uniqueCellArr, unsigned int * nNonEmptyCells)
+{
+	unsigned int tid=threadIdx.x+ (blockIdx.x*BLOCKSIZE); 
+	int tempIdx;
+
+	if (tid>=*N){
+		return;
+	}
+
+	unsigned int pointID=tid*(GPUNUMDIM);
+
+	unsigned int tmpNDCellIdx[NUMINDEXEDDIM];
+	for (int j=0; j<NUMINDEXEDDIM; j++){
+		tmpNDCellIdx[j]=((database[pointID+j]-minArr[j])/(*epsilon));
+	}
+	uint64_t linearID=getLinearID_nDimensionsGPU(tmpNDCellIdx, nCells, NUMINDEXEDDIM);
+
+	// get the index of linear ID in unique cell array
+	tempIdx = binarySearch(uniqueCellArr, *nNonEmptyCells, linearID);
+	if(tempIdx != -1)
+	{
+		// set value to number of distance calculations for that cell
+		pointDistCalcArr[tid] = cellDistCalcArr[tempIdx];
+	}
+	else
+	{
+		// unexpected that point cell is not found
+		printf("\nWARNING: The cell for point %d was not found\n", pointID);
+	}
 }

@@ -231,6 +231,7 @@ int main(int argc, char *argv[])
 	printf("\nTime to index (not counted in the time): %f", tend_index - tstart_index);
 	
 
+	/*
 	//Neighbortable storage -- the result
 	neighborTableLookup * neighborTable= new neighborTableLookup[NDdataPoints.size()];
 	std::vector<struct neighborDataPtrs> pointersToNeighbors;
@@ -252,6 +253,7 @@ int main(int argc, char *argv[])
 	printf("\nTime: %f",(tend-tstart)+timeReorderByDimVariance);
 
 	totalTime+=(tend-tstart)+timeReorderByDimVariance;
+	*/
 
 
 #if COUNTMETRICS==1
@@ -260,6 +262,8 @@ int main(int argc, char *argv[])
 	gpu_stats<<totalTime<<", "<< inputFname<<", "<<epsilon<<", "<<totalNeighbors<<", GPUNUMDIM/NUMINDEXEDDIM/ILP/STAMP/SORT/REORDER/SHORTCIRCUIT/QUERYREORDER/DTYPE(float/double): "<<GPUNUMDIM<<", "<<NUMINDEXEDDIM<<", "<<ILP<<", "<<STAMP<<", "<<SORT<<", "<<REORDER<< ", "<<SHORTCIRCUIT<<", "<<QUERYREORDER<<", "<<STR(DTYPE)<<endl;
 #endif
 	gpu_stats.close();
+
+	/*
 
 	//Print NeighborTable:
 
@@ -327,6 +331,7 @@ int main(int argc, char *argv[])
 	}
 	#endif //end if stamp==1
 	#endif //endif print neighbortable
+	*/
 
 }
 
@@ -925,6 +930,11 @@ void generateNDGridDimensions(std::vector<std::vector <DTYPE> > *NDdataPoints, D
 	for (int j=0; j<NUMINDEXEDDIM; j++){
 		minArr[j]-=epsilon;
 		maxArr[j]+=epsilon;
+	}	
+
+	// subtract off set for testing
+	for (int j=0; j<NUMINDEXEDDIM; j++){
+		minArr[j]-=0.5;
 	}	
 
 	for (int j=0; j<NUMINDEXEDDIM; j++){

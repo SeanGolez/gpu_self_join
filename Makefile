@@ -6,11 +6,11 @@
 #Build binaries for the code in the paper
 #see params.h for the parameters
 
-SOURCES = main.cu GPU.cu kernel.cu import_dataset.cpp tree_index.cpp 
+SOURCES = GPU.cu kernel.cu import_dataset.cpp tree_index.cpp randomIndexing.cu
 OBJECTS = import_dataset.o tree_index.o 
-CUDAOBJECTS = GPU.o kernel.o main.o
+CUDAOBJECTS = GPU.o kernel.o randomIndexing.o
 CC = nvcc
-EXECUTABLE = main
+EXECUTABLE = randomIndexing
 
 
 
@@ -20,7 +20,7 @@ COMPUTE_CAPABILITY_FLAGS = -arch=compute_$(COMPUTE_CAPABILITY) -code=sm_$(COMPUT
 
 
 FLAGS = -std=c++14 -O3 -Xcompiler -fopenmp -lcuda -lineinfo 
-CFLAGS = -c -D_MWAITXINTRIN_H_INCLUDED -D_FORCE_INLINES
+CFLAGS = -c -g -D_MWAITXINTRIN_H_INCLUDED -D_FORCE_INLINES
 
 
 all: $(EXECUTABLE)
@@ -32,15 +32,14 @@ import_dataset.o: import_dataset.cpp params.h
 tree_index.o: tree_index.cpp params.h
 	$(CC) $(FLAGS) $(CFLAGS) $(COMPUTE_CAPABILITY_FLAGS) tree_index.cpp	
 
-
-main.o: main.cu params.h
-	$(CC) $(FLAGS) $(CFLAGS) $(COMPUTE_CAPABILITY_FLAGS) main.cu 
-
 kernel.o: kernel.cu params.h
 	$(CC) $(FLAGS) $(CFLAGS) $(COMPUTE_CAPABILITY_FLAGS) kernel.cu 		
 
 GPU.o: GPU.cu params.h
 	$(CC) $(FLAGS) $(CFLAGS) $(COMPUTE_CAPABILITY_FLAGS) GPU.cu 	
+
+randomIndexing.o: randomIndexing.cu params.h
+	$(CC) $(FLAGS) $(CFLAGS) $(COMPUTE_CAPABILITY_FLAGS) randomIndexing.cu
 
 
 
@@ -86,6 +85,7 @@ clean:
 	rm $(CUDAOBJECTS)
 	rm libgpuselfjoin.so
 	rm main
+	rm randomIndexing
 
 
 
