@@ -50,6 +50,7 @@ The file params.h specifies parameters and optimizations. Default values and cat
 
 * GPUNUMDIM- Dimensionality of the data (n)
 * NUMINDEXEDDIM- Number of dimensions indexed (k, default for high-D is 6-8 where k<n) 
+* NUM_RAND_INDEXES- Number of random indexes to generate
 * DTYPE- Data type of the data (float or double) 
 * PRINTNEIGHBORTABLE- Prints the list of neighbors for each point (default 0)
 
@@ -81,4 +82,4 @@ High dimensionality (likely do not want to enable these at low-dimensionality, b
 
 A small dataset has been included for testing purposes. If you run the 2-D dataset test_data.txt with epsilon=1.0, with no optimizations and store the data as single precision floats you should obtain a total of 27982028 neighbors. 
 
-$./main test_dat.txt 1.0 0.5 2
+$./main test_dat.txt 1.0 2

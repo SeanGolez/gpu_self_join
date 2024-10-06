@@ -84,6 +84,7 @@ __device__ void getNDimIndexesFromLinearIdxGPU(unsigned int * indexes, unsigned 
 }
 
 // Kernel for binary search
+// Needed to get the index of the searched value
 __device__ int binarySearch(uint64_t* d_array, unsigned int size, uint64_t value) {
     int low = 0;
     int high = size - 1;
@@ -205,7 +206,7 @@ for (int i=0; i<GPUNUMDIM; i++){
 	point[i]=database[pointOffset+i];	
 }
 
-
+// get which index to use for point
 unsigned int whichIndex = whichIndexPoints[pointIdx];
 
 //calculate the coords of the Cell for the point
@@ -369,7 +370,7 @@ __device__ void evaluateCell(unsigned int* whichIndex, unsigned int *N, unsigned
 		startGridPtr += allNNonEmptyCells[i];
 		startIndexPtr += allNNonEmptyCells[i];
 	}
-	
+
 	if (thrust::binary_search(thrust::seq, startGridPtr, startGridPtr+(allNNonEmptyCells[(*whichIndex)]), gridCellLookup(tmp))){
 
         //compute the neighbors for the adjacent non-empty cell

@@ -22,9 +22,8 @@
 //Number of indexed dimensions (k)
 #define NUMINDEXEDDIM 2
 
-// note: use six for larger dimension
-
-// note: there is an optimal indexed dimensions for distance calculations and index overhead
+//Number of random indexes to generate
+#define NUM_RAND_INDEXES 2
 
 //data type of the input dataset (float or double)
 #define DTYPE double
@@ -33,7 +32,7 @@
 ///////////////////////
 //Utility
 //used for outputting the neighbortable at the end
-#define PRINTNEIGHBORTABLE 1
+#define PRINTNEIGHBORTABLE 0
 ///////////////////////
 
 
@@ -100,5 +99,3 @@
 						 
 //end batching scheme					
 ///////////////////////
-
-#define NUM_RAND_INDEXES 2

@@ -40,7 +40,7 @@ using namespace std;
 uint64_t getLinearID_nDimensions(unsigned int *indexes, unsigned int *dimLen, unsigned int nDimensions);
 void getNDimIndexesFromLinearIdx(unsigned int *indexes, unsigned int *dimLen, unsigned int nDimensions, uint64_t linearId);
 void populateNDGridIndexAndLookupArray(std::vector<std::vector<DTYPE>> *NDdataPoints, DTYPE epsilon, struct gridCellLookup **gridCellLookupArr, struct grid **index, unsigned int *indexLookupArr, DTYPE *minArr, unsigned int *nCells, uint64_t totalCells, unsigned int *nNonEmptyCells, unsigned int **gridCellNDMask, unsigned int *gridCellNDMaskOffsets, unsigned int *nNDMaskElems, std::unordered_map<uint64_t, std::vector<uint64_t>> &uniqueGridAdjacentCells, std::vector<std::vector<int>> &incrementorVects);
-void generateNDGridDimensions(std::vector<std::vector<DTYPE>> *NDdataPoints, DTYPE epsilon, DTYPE *minArr, DTYPE *maxArr, unsigned int *nCells, uint64_t *totalCells, DTYPE indexOffset);
+void generateNDGridDimensions(std::vector<std::vector<DTYPE>> *NDdataPoints, DTYPE epsilon, DTYPE *minArr, DTYPE *maxArr, unsigned int *nCells, uint64_t *totalCells, DTYPE &indexOffset);
 void importNDDataset(std::vector<std::vector<DTYPE>> *dataPoints, char *fname);
 void ReorderByDimension(std::vector<std::vector<DTYPE>> *NDdataPoints);
 void computeNumDistanceCalcs(std::vector<workArrayPnt> *totalPointsWork, unsigned int *nNonEmptyCells, gridCellLookup *gridCellLookupArr, grid *index, std::unordered_map<uint64_t, std::vector<uint64_t>> *uniqueGridAdjacentCells, std::vector<std::vector<DTYPE>> *NDdataPoints, DTYPE *minArr, unsigned int *nCells, DTYPE &epsilon);
@@ -85,14 +85,14 @@ int main(int argc, char *argv[])
 	omp_set_max_active_levels(4);
 	/////////////////////////
 	// Get information from command line
-	// 1) the dataset, 2) epsilon, 3) new offset, 4) number of dimensions
+	// 1) the dataset, 2) epsilon, 3) number of dimensions
 	/////////////////////////
 
 	// Read in parameters from file:
 	// dataset filename and cluster instance file
-	if (argc != 5)
+	if (argc != 4)
 	{
-		cout << "\n\nIncorrect number of input parameters.  \nShould be dataset file, epsilon, new offset, number of dimensions\n";
+		cout << "\n\nIncorrect number of input parameters.  \nShould be dataset file, epsilon, number of dimensions\n";
 		return 0;
 	}
 
@@ -100,16 +100,13 @@ int main(int argc, char *argv[])
 	// char inputFname[]="data/test_data_removed_nan.txt";
 	char inputFname[500];
 	char inputEpsilon[500];
-	char inputNewOffset[500];
 	char inputnumdim[500];
 
 	strcpy(inputFname, argv[1]);
 	strcpy(inputEpsilon, argv[2]);
-	strcpy(inputNewOffset, argv[3]);
-	strcpy(inputnumdim, argv[4]);
+	strcpy(inputnumdim, argv[3]);
 
 	DTYPE epsilon = atof(inputEpsilon);
-	DTYPE newOffset = atof(inputNewOffset);
 	unsigned int NDIM = atoi(inputnumdim);
 
 	if (GPUNUMDIM != NDIM)
@@ -122,7 +119,6 @@ int main(int argc, char *argv[])
 
 	printf("\nDataset file: %s", inputFname);
 	printf("\nEpsilon: %f", epsilon);
-	printf("\nNew Offset: %f", newOffset);
 	printf("\nNumber of dimensions (NDIM): %d\n", NDIM);
 
 	//////////////////////////////
@@ -152,6 +148,7 @@ int main(int argc, char *argv[])
 	printf("\nTime to reorder: %f", timeReorderByDimVariance);
 #endif
 
+	// inititalize arrays
 	std::vector<std::vector<workArrayPnt>> allTotalPointsWork;
 	DTYPE *allMinArr = new DTYPE[NUMINDEXEDDIM * NUM_RAND_INDEXES];
 	unsigned int *allNCells = new unsigned int[NUMINDEXEDDIM * NUM_RAND_INDEXES];
@@ -160,6 +157,16 @@ int main(int argc, char *argv[])
 	std::vector<struct grid> allIndexVec;
 	std::vector<struct gridCellLookup> allGridCellLookupArrVec;
 	unsigned int *allIndexLookupArr = new unsigned int[NDdataPoints.size() * NUM_RAND_INDEXES];
+
+	// define random engine
+    std::random_device rd;
+	// initialize generator
+    std::mt19937 gen(rd());
+	// produce random float within [0, epsilon/2)
+	std::uniform_real_distribution<> dis(DTYPE(0), epsilon/2);
+
+	// keep track of random offsets
+	std::vector<DTYPE> allOffsets;
 
 	// get num distance calcs for each point for each index
 	for (int indexIdx = 0; indexIdx < NUM_RAND_INDEXES; indexIdx++)
@@ -172,8 +179,19 @@ int main(int argc, char *argv[])
 		}
 		else
 		{
-			indexOffset = newOffset;
+			// generate new number that is not the min and not previously generated
+			do {
+				indexOffset = dis(gen);
+			} while( 
+				indexOffset == 0 || std::binary_search(allOffsets.begin(), allOffsets.end(), indexOffset )
+			);
+
+			allOffsets.emplace_back(indexOffset);
 		}
+
+		// display the offset
+		printf("\n\n+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+");
+		printf("\nOffset %d: %f", indexIdx+1, indexOffset);
 
 		DTYPE *minArr = new DTYPE[NUMINDEXEDDIM];
 		DTYPE *maxArr = new DTYPE[NUMINDEXEDDIM];
@@ -191,14 +209,6 @@ int main(int argc, char *argv[])
 		struct grid *index;						  // allocate in the populateDNGridIndexAndLookupArray -- only index the non-empty cells
 		struct gridCellLookup *gridCellLookupArr; // allocate in the populateDNGridIndexAndLookupArray -- list of non-empty cells
 
-		// the grid cell mask tells you what cells are non-empty in each dimension
-		// used for finding the non-empty cells that you want
-		/*
-		unsigned int * gridCellNDMask; //allocate in the populateDNGridIndexAndLookupArray -- list of cells in each n-dimension that have elements in them
-		unsigned int * nNDMaskElems= new unsigned int; //size of the above array
-		unsigned int * gridCellNDMaskOffsets=new unsigned int [NUMINDEXEDDIM*2]; //offsets into the above array for each dimension
-																		//as [min,max,min,max,min,max] (for 3-D)
-		*/
 
 		// ids of the elements in the database that are found in each grid cell
 		unsigned int *indexLookupArr = new unsigned int[NDdataPoints.size()];
@@ -215,12 +225,8 @@ int main(int argc, char *argv[])
 		std::vector<workArrayPnt> totalPointsWork;
 
 		// std::unordered_map<uint64_t, std::vector<uint64_t>> uniqueGridAdjacentCells;
-
 		// populateNDGridIndexAndLookupArray(&NDdataPoints, epsilon, &gridCellLookupArr, &index, indexLookupArr, minArr, nCells, totalCells, &nNonEmptyCells, &gridCellNDMask, gridCellNDMaskOffsets, nNDMaskElems, uniqueGridAdjacentCells, incrementorVects);
-		// get number of distance calculations for each point
-		// computeNumDistanceCalcs(&totalPointsWork, &nNonEmptyCells, gridCellLookupArr, index, &uniqueGridAdjacentCells, &NDdataPoints, minArr, nCells, epsilon);
-
-		// populateNDGridIndexAndLookupArrayParallel(&NDdataPoints, epsilon, &gridCellLookupArr, &index, indexLookupArr, minArr,  nCells, totalCells, &nNonEmptyCells, &gridCellNDMask, gridCellNDMaskOffsets, nNDMaskElems);
+		
 		populateNDGridIndexAndLookupArrayGPU(&NDdataPoints, &epsilon, minArr, totalCells, nCells, &gridCellLookupArr, &index, indexLookupArr, &nNonEmptyCells, &incrementorVects, &totalPointsWork);
 		double tend_index = omp_get_wtime();
 		printf("\nTime to index (not counted in the time): %f", tend_index - tstart_index);
@@ -247,6 +253,17 @@ int main(int argc, char *argv[])
 		{
 			allIndexLookupArr[i + (indexIdx * NDdataPoints.size())] = indexLookupArr[i];
 		}
+
+		printf("\n+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+\n");
+
+		delete[] minArr;
+		delete[] maxArr;
+		delete[] nCells;
+		delete[] indexLookupArr;
+		minArr = NULL;
+		maxArr = NULL;
+		nCells = NULL;
+		indexLookupArr = NULL;
 	}
 
 	// create arrays with index for each random index
@@ -294,7 +311,7 @@ int main(int argc, char *argv[])
 
 	totalTime += (tend - tstart);
 
-	printf("\nTime: %f\n", (tend - tstart));
+	printf("\nTime: %f\n", (tend - tstart)+timeReorderByDimVariance);
 
 
 	gpu_stats << totalTime << ", " << inputFname << ", " << epsilon << ", " << ", GPUNUMDIM/NUMINDEXEDDIM/ILP/STAMP/SORT/REORDER/SHORTCIRCUIT/QUERYREORDER/DTYPE(float/double): " << GPUNUMDIM << ", " << NUMINDEXEDDIM << ", " << ILP << ", " << STAMP << ", " << SORT << ", " << REORDER << ", " << SHORTCIRCUIT << ", " << QUERYREORDER << ", " << STR(DTYPE) << endl;
@@ -303,6 +320,14 @@ int main(int argc, char *argv[])
 #if PRINTNEIGHBORTABLE == 1
 	printNeighborTable(NDdataPoints.size(), neighborTable);
 #endif
+
+	delete[] allMinArr;
+	delete[] allNCells;
+	delete[] allNNonEmptyCells;
+	delete[] allIndexLookupArr;
+	delete[] allIndex;
+	delete[] allGridCellLookupArr;
+	delete[] whichIndexPoints;
 }
 #endif // end #if not Python (standard C version)
 
@@ -553,7 +578,7 @@ void getNDimIndexesFromLinearIdx(unsigned int *indexes, unsigned int *dimLen, un
 // we can use this as an offset to calculate where points are located in the grid
 // max arr- the maximum value of the points in each dimensions + epsilon
 // returns the time component of sorting the dimensions when SORT=1
-void generateNDGridDimensions(std::vector<std::vector<DTYPE>> *NDdataPoints, DTYPE epsilon, DTYPE *minArr, DTYPE *maxArr, unsigned int *nCells, uint64_t *totalCells, DTYPE indexOffset)
+void generateNDGridDimensions(std::vector<std::vector<DTYPE>> *NDdataPoints, DTYPE epsilon, DTYPE *minArr, DTYPE *maxArr, unsigned int *nCells, uint64_t *totalCells, DTYPE &indexOffset)
 {
 
 	printf("\n\n*****************************\nGenerating grid dimensions.\n*****************************\n");
