@@ -17,17 +17,24 @@
 #define BLOCKSIZE 256
  
 //Number of dimensions of the data (n)
-#define GPUNUMDIM 2
+#define GPUNUMDIM 3
 
 //Number of indexed dimensions (k)
-#define NUMINDEXEDDIM 2
+#define NUMINDEXEDDIM 3
 
 //Number of random indexes to generate
-#define NUM_RAND_INDEXES 2
+#define NUMRANDINDEXES 10
 
 //data type of the input dataset (float or double)
 #define DTYPE double
 
+///////////////////////
+// Random indexing types
+// exactly one of these options should be 1
+#define RANDOMOFFSETSAMEALLDIM 1
+#define FIXEDOFFSETALLDIM 0
+#define RANDOMOFFSETFOREACHDIM 0
+///////////////////////
 
 ///////////////////////
 //Utility
@@ -74,7 +81,7 @@
 
 //used to see how many point comparisons and grid cell searches
 //For performance evaluation purposes, and not when timing the algorithm
-#define COUNTMETRICS 0
+#define COUNTMETRICS 1
 
 //Data type for the above
 #define CTYPE unsigned long long

@@ -273,7 +273,7 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 {
 	// create total num empty cells for all indexes variable
 	unsigned int totalNNonemptyCells = 0;
-	for( int i=0; i<NUM_RAND_INDEXES; i ++)
+	for( int i=0; i<NUMRANDINDEXES; i ++)
 	{
 		totalNNonemptyCells += allNNonEmptyCells[i];
 	}
@@ -411,10 +411,10 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 	unsigned int * dev_allIndexLookupArr;
 
 	//allocate memory on device:
-	gpuErrchk(cudaMalloc( (void**)&dev_allIndexLookupArr, sizeof(unsigned int)*(*DBSIZE)*(NUM_RAND_INDEXES)));
+	gpuErrchk(cudaMalloc( (void**)&dev_allIndexLookupArr, sizeof(unsigned int)*(*DBSIZE)*(NUMRANDINDEXES)));
 
 	//copy lookup array to the device:
-	gpuErrchk(cudaMemcpy(dev_allIndexLookupArr, allIndexLookupArr, sizeof(unsigned int)*(*DBSIZE)*(NUM_RAND_INDEXES), cudaMemcpyHostToDevice));
+	gpuErrchk(cudaMemcpy(dev_allIndexLookupArr, allIndexLookupArr, sizeof(unsigned int)*(*DBSIZE)*(NUMRANDINDEXES), cudaMemcpyHostToDevice));
 	
 	///////////////////////////////////
 	//END COPY THE LOOKUP ARRAY TO THE DATA ELEMS TO THE GPU
@@ -454,17 +454,17 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 	//minimum boundary of the grid:
 	DTYPE* dev_allMinArr;
 	//Allocate on the device
-	gpuErrchk(cudaMalloc((void**)&dev_allMinArr, sizeof(DTYPE)*(NUMINDEXEDDIM)*(NUM_RAND_INDEXES)));
+	gpuErrchk(cudaMalloc((void**)&dev_allMinArr, sizeof(DTYPE)*(NUMINDEXEDDIM)*(NUMRANDINDEXES)));
 	
-	gpuErrchk(cudaMemcpy( dev_allMinArr, allMinArr, sizeof(DTYPE)*(NUMINDEXEDDIM)*(NUM_RAND_INDEXES), cudaMemcpyHostToDevice ));
+	gpuErrchk(cudaMemcpy( dev_allMinArr, allMinArr, sizeof(DTYPE)*(NUMINDEXEDDIM)*(NUMRANDINDEXES), cudaMemcpyHostToDevice ));
 
 	//number of cells in each dimension
 	unsigned int * dev_allNCells;
 
 	//Allocate on the device
-	gpuErrchk(cudaMalloc((void**)&dev_allNCells, sizeof(unsigned int)*(NUMINDEXEDDIM)*(NUM_RAND_INDEXES)));
+	gpuErrchk(cudaMalloc((void**)&dev_allNCells, sizeof(unsigned int)*(NUMINDEXEDDIM)*(NUMRANDINDEXES)));
 
-	gpuErrchk(cudaMemcpy( dev_allNCells, allNCells, sizeof(unsigned int)*(NUMINDEXEDDIM)*(NUM_RAND_INDEXES), cudaMemcpyHostToDevice ));
+	gpuErrchk(cudaMemcpy( dev_allNCells, allNCells, sizeof(unsigned int)*(NUMINDEXEDDIM)*(NUMRANDINDEXES), cudaMemcpyHostToDevice ));
 
 	///////////////////////////////////
 	//END COPY GRID DIMENSIONS TO THE GPU
@@ -524,9 +524,9 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 	unsigned int * dev_allNNonEmptyCells;
 	
 	//Allocate on the device
-	gpuErrchk(cudaMalloc((void**)&dev_allNNonEmptyCells, sizeof(unsigned int)*(NUM_RAND_INDEXES)));
+	gpuErrchk(cudaMalloc((void**)&dev_allNNonEmptyCells, sizeof(unsigned int)*(NUMRANDINDEXES)));
 	//copy to device
-	gpuErrchk(cudaMemcpy( dev_allNNonEmptyCells, allNNonEmptyCells, sizeof(unsigned int)*(NUM_RAND_INDEXES), cudaMemcpyHostToDevice ));
+	gpuErrchk(cudaMemcpy( dev_allNNonEmptyCells, allNNonEmptyCells, sizeof(unsigned int)*(NUMRANDINDEXES), cudaMemcpyHostToDevice ));
 
 	///////////////////////////////////
 	//NUMBER OF NON-EMPTY CELLS

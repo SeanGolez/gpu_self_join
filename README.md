@@ -50,7 +50,7 @@ The file params.h specifies parameters and optimizations. Default values and cat
 
 * GPUNUMDIM- Dimensionality of the data (n)
 * NUMINDEXEDDIM- Number of dimensions indexed (k, default for high-D is 6-8 where k<n) 
-* NUM_RAND_INDEXES- Number of random indexes to generate (default 2)
+* NUMRANDINDEXES- Number of random indexes to generate (default 2)
 * DTYPE- Data type of the data (float or double) 
 * PRINTNEIGHBORTABLE- Prints the list of neighbors for each point (default 0)
 

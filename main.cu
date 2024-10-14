@@ -130,6 +130,8 @@ int main(int argc, char *argv[])
 
 	// GPU with Grid index
 
+	double entire_time_start = omp_get_wtime();
+
 	char fname[] = "gpu_stats.txt";
 	ofstream gpu_stats;
 	gpu_stats.open(fname, ios::app);
@@ -150,13 +152,13 @@ int main(int argc, char *argv[])
 
 	// inititalize arrays
 	std::vector<std::vector<workArrayPnt>> allTotalPointsWork;
-	DTYPE *allMinArr = new DTYPE[NUMINDEXEDDIM * NUM_RAND_INDEXES];
-	unsigned int *allNCells = new unsigned int[NUMINDEXEDDIM * NUM_RAND_INDEXES];
-	unsigned int *allNNonEmptyCells = new unsigned int[NUM_RAND_INDEXES];
+	DTYPE *allMinArr = new DTYPE[NUMINDEXEDDIM * NUMRANDINDEXES];
+	unsigned int *allNCells = new unsigned int[NUMINDEXEDDIM * NUMRANDINDEXES];
+	unsigned int *allNNonEmptyCells = new unsigned int[NUMRANDINDEXES];
 
 	std::vector<struct grid> allIndexVec;
 	std::vector<struct gridCellLookup> allGridCellLookupArrVec;
-	unsigned int *allIndexLookupArr = new unsigned int[NDdataPoints.size() * NUM_RAND_INDEXES];
+	unsigned int *allIndexLookupArr = new unsigned int[NDdataPoints.size() * NUMRANDINDEXES];
 
 	// maps each non empty cell to its adjacent cells, including itself
 	// get all incrementors to find adjacent cells (vectors to add to position to get each adjecent cell)
@@ -177,7 +179,7 @@ int main(int argc, char *argv[])
 	std::vector<DTYPE> allOffsets;
 
 	// get num distance calcs for each point for each index
-	for (int indexIdx = 0; indexIdx < NUM_RAND_INDEXES; indexIdx++)
+	for (int indexIdx = 0; indexIdx < NUMRANDINDEXES; indexIdx++)
 	{
 		DTYPE indexOffset;
 		// use no offset index for first iteration and offset for second
@@ -187,6 +189,7 @@ int main(int argc, char *argv[])
 		}
 		else
 		{
+			#if RANDOMOFFSETSAMEALLDIM == 1
 			// generate new number that is not the min and not previously generated
 			do {
 				indexOffset = dis(gen);
@@ -195,6 +198,10 @@ int main(int argc, char *argv[])
 			);
 
 			allOffsets.emplace_back(indexOffset);
+			#elif FIXEDOFFSETALLDIM == 1
+			// generate even spaces indexes
+			indexOffset = indexIdx * ((epsilon/2) / (NUMRANDINDEXES));
+			#endif
 		}
 
 		// display the offset
@@ -280,7 +287,7 @@ int main(int argc, char *argv[])
 		unsigned int whichIdx;
 		unsigned int leastDistCalcs = UINT_MAX;
 		// loop through each "random" index
-		for (int j = 0; j < NUM_RAND_INDEXES; j++)
+		for (int j = 0; j < NUMRANDINDEXES; j++)
 		{
 			if (allTotalPointsWork[j][i].numDistCalcs < leastDistCalcs)
 			{
@@ -310,11 +317,21 @@ int main(int argc, char *argv[])
 
 	totalTime += (tend - tstart);
 
-	printf("\nTime: %f\n", (tend - tstart)+timeReorderByDimVariance);
+	printf("\nTime to get neighbors: %f\n", (tend - tstart) + timeReorderByDimVariance);
 
+	double entire_time_end = omp_get_wtime();
 
-	gpu_stats << totalTime << ", " << inputFname << ", " << epsilon << ", " << ", GPUNUMDIM/NUMINDEXEDDIM/ILP/STAMP/SORT/REORDER/SHORTCIRCUIT/QUERYREORDER/DTYPE(float/double): " << GPUNUMDIM << ", " << NUMINDEXEDDIM << ", " << ILP << ", " << STAMP << ", " << SORT << ", " << REORDER << ", " << SHORTCIRCUIT << ", " << QUERYREORDER << ", " << STR(DTYPE) << endl;
+	printf("\nTotal time: %f\n", (entire_time_end - entire_time_start));
+
+	gpu_stats << totalTime << ", " << inputFname << ", " << epsilon << ", " << totalNeighbors << ", GPUNUMDIM/NUMINDEXEDDIM/NUMRANDINDEXES/ILP/STAMP/SORT/REORDER/SHORTCIRCUIT/QUERYREORDER/DTYPE(float/double): " << GPUNUMDIM << ", " << NUMINDEXEDDIM << ", " << NUMRANDINDEXES << ", " << ILP << ", " << STAMP << ", " << SORT << ", " << REORDER << ", " << SHORTCIRCUIT << ", " << QUERYREORDER << ", " << STR(DTYPE) << endl;
 	gpu_stats.close();
+
+	/*
+	char test_fname[] = "py_test_stats.txt";
+	gpu_stats.open(test_fname, ios::app);
+	gpu_stats << epsilon << '\t' << NUMRANDINDEXES << '\t' << (entire_time_end - entire_time_start) << '\t' << (tend - tstart) << '\t' << workCounts[0] << '\t' << workCounts[1] << '\t' << totalNeighbors << '\n';
+	gpu_stats.close();
+	*/
 
 #if PRINTNEIGHBORTABLE == 1
 	printNeighborTable(NDdataPoints.size(), neighborTable);
