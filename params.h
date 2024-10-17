@@ -23,7 +23,7 @@
 #define NUMINDEXEDDIM 3
 
 //Number of random indexes to generate
-#define NUMRANDINDEXES 10
+#define NUMRANDINDEXES 2
 
 //data type of the input dataset (float or double)
 #define DTYPE double
@@ -31,9 +31,9 @@
 ///////////////////////
 // Random indexing types
 // exactly one of these options should be 1
-#define RANDOMOFFSETSAMEALLDIM 1
+#define RANDOMOFFSETSAMEALLDIM 0
 #define FIXEDOFFSETALLDIM 0
-#define RANDOMOFFSETFOREACHDIM 0
+#define RANDOMOFFSETFOREACHDIM 1
 ///////////////////////
 
 ///////////////////////

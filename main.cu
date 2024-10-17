@@ -40,7 +40,7 @@ using namespace std;
 uint64_t getLinearID_nDimensions(unsigned int *indexes, unsigned int *dimLen, unsigned int nDimensions);
 void getNDimIndexesFromLinearIdx(unsigned int *indexes, unsigned int *dimLen, unsigned int nDimensions, uint64_t linearId);
 void populateNDGridIndexAndLookupArray(std::vector<std::vector<DTYPE>> *NDdataPoints, DTYPE epsilon, struct gridCellLookup **gridCellLookupArr, struct grid **index, unsigned int *indexLookupArr, DTYPE *minArr, unsigned int *nCells, uint64_t totalCells, unsigned int *nNonEmptyCells, unsigned int **gridCellNDMask, unsigned int *gridCellNDMaskOffsets, unsigned int *nNDMaskElems, std::unordered_map<uint64_t, std::vector<uint64_t>> &uniqueGridAdjacentCells, std::vector<std::vector<int>> &incrementorVects);
-void generateNDGridDimensions(std::vector<std::vector<DTYPE>> *NDdataPoints, DTYPE epsilon, DTYPE *minArr, DTYPE *maxArr, unsigned int *nCells, uint64_t *totalCells, DTYPE &indexOffset);
+void generateNDGridDimensions(std::vector<std::vector<DTYPE>> *NDdataPoints, DTYPE epsilon, DTYPE *minArr, DTYPE *maxArr, unsigned int *nCells, uint64_t *totalCells, DTYPE *indexOffset);
 void importNDDataset(std::vector<std::vector<DTYPE>> *dataPoints, char *fname);
 void ReorderByDimension(std::vector<std::vector<DTYPE>> *NDdataPoints);
 void computeNumDistanceCalcs(std::vector<workArrayPnt> *totalPointsWork, unsigned int *nNonEmptyCells, gridCellLookup *gridCellLookupArr, grid *index, std::unordered_map<uint64_t, std::vector<uint64_t>> *uniqueGridAdjacentCells, std::vector<std::vector<DTYPE>> *NDdataPoints, DTYPE *minArr, unsigned int *nCells, DTYPE &epsilon);
@@ -181,7 +181,9 @@ int main(int argc, char *argv[])
 	// get num distance calcs for each point for each index
 	for (int indexIdx = 0; indexIdx < NUMRANDINDEXES; indexIdx++)
 	{
+		#if RANDOMOFFSETSAMEALLDIM == 1 || FIXEDOFFSETALLDIM == 1
 		DTYPE indexOffset;
+		DTYPE* indexOffsetPtr;
 		// use no offset index for first iteration and offset for second
 		if (indexIdx == 0)
 		{
@@ -198,15 +200,45 @@ int main(int argc, char *argv[])
 			);
 
 			allOffsets.emplace_back(indexOffset);
+
 			#elif FIXEDOFFSETALLDIM == 1
 			// generate even spaces indexes
 			indexOffset = indexIdx * ((epsilon/2) / (NUMRANDINDEXES));
 			#endif
+
+			indexOffsetPtr = &indexOffset;
 		}
+		#elif RANDOMOFFSETFOREACHDIM == 1
+		DTYPE indexOffsetPtr[NUMINDEXEDDIM];
+		// use no offset index for first iteration and offset for second
+		if (indexIdx == 0)
+		{
+			for( int i=0; i<NUMINDEXEDDIM; i++)
+			{
+				indexOffsetPtr[i] = 0;
+			}
+		}
+		else
+		{
+			// generate new number indexes for each dimension
+			for( int i=0; i<NUMINDEXEDDIM; i++)
+			{
+				indexOffsetPtr[i] = dis(gen);
+			}
+		}
+		#endif
 
 		// display the offset
 		printf("\n\n+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+");
-		printf("\nOffset %d: %f", indexIdx+1, indexOffset);
+		printf("\nOffset %d: ", indexIdx+1);
+		#if RANDOMOFFSETSAMEALLDIM == 1 || FIXEDOFFSETALLDIM == 1
+		printf("%f", *indexOffsetPtr);
+		#elif RANDOMOFFSETFOREACHDIM == 1
+		for( int i=0; i<NUMINDEXEDDIM; i++)
+		{
+			printf("%f, ", indexOffsetPtr[i]);
+		}
+		#endif
 
 		DTYPE *minArr = new DTYPE[NUMINDEXEDDIM];
 		DTYPE *maxArr = new DTYPE[NUMINDEXEDDIM];
@@ -215,7 +247,7 @@ int main(int argc, char *argv[])
 		unsigned int nNonEmptyCells = 0;
 
 		double tstart_index = omp_get_wtime();
-		generateNDGridDimensions(&NDdataPoints, epsilon, minArr, maxArr, nCells, &totalCells, indexOffset);
+		generateNDGridDimensions(&NDdataPoints, epsilon, minArr, maxArr, nCells, &totalCells, indexOffsetPtr);
 		printf("\nGrid: total cells (including empty) %lu", totalCells);
 
 		// allocate memory for index now that we know the number of cells
@@ -327,6 +359,7 @@ int main(int argc, char *argv[])
 	gpu_stats.close();
 
 	/*
+	// remove after testing
 	char test_fname[] = "py_test_stats.txt";
 	gpu_stats.open(test_fname, ios::app);
 	gpu_stats << epsilon << '\t' << NUMRANDINDEXES << '\t' << (entire_time_end - entire_time_start) << '\t' << (tend - tstart) << '\t' << workCounts[0] << '\t' << workCounts[1] << '\t' << totalNeighbors << '\n';
@@ -594,7 +627,7 @@ void getNDimIndexesFromLinearIdx(unsigned int *indexes, unsigned int *dimLen, un
 // we can use this as an offset to calculate where points are located in the grid
 // max arr- the maximum value of the points in each dimensions + epsilon
 // returns the time component of sorting the dimensions when SORT=1
-void generateNDGridDimensions(std::vector<std::vector<DTYPE>> *NDdataPoints, DTYPE epsilon, DTYPE *minArr, DTYPE *maxArr, unsigned int *nCells, uint64_t *totalCells, DTYPE &indexOffset)
+void generateNDGridDimensions(std::vector<std::vector<DTYPE>> *NDdataPoints, DTYPE epsilon, DTYPE *minArr, DTYPE *maxArr, unsigned int *nCells, uint64_t *totalCells, DTYPE *indexOffset)
 {
 
 	printf("\n\n*****************************\nGenerating grid dimensions.\n*****************************\n");
@@ -640,7 +673,11 @@ void generateNDGridDimensions(std::vector<std::vector<DTYPE>> *NDdataPoints, DTY
 	// change min array by offset
 	for (int j = 0; j < NUMINDEXEDDIM; j++)
 	{
-		minArr[j] -= indexOffset;
+		#if RANDOMOFFSETSAMEALLDIM == 1 || FIXEDOFFSETALLDIM == 1
+		minArr[j] -= (*indexOffset);
+		#elif RANDOMOFFSETFOREACHDIM == 1
+		minArr[j] -= indexOffset[j];
+		#endif
 	}
 
 	for (int j = 0; j < NUMINDEXEDDIM; j++)
