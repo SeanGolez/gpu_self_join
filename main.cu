@@ -312,6 +312,15 @@ int main(int argc, char *argv[])
 
 	// get which index to use for each point
 	unsigned int *whichIndexPoints = new unsigned int[NDdataPoints.size()];
+	
+	#if QUERYREORDER==0
+	unsigned int * orderedQueryPntIDs=NULL;
+	#endif
+	#if QUERYREORDER==1
+	// create array for arranging points by work
+	std::vector<workArrayPnt> totalPointsWork;
+	unsigned int * orderedQueryPntIDs=new unsigned int[NDdataPoints.size()];
+	#endif
 
 	// loop through each point idx
 	for (int i = 0; i < NDdataPoints.size(); i++)
@@ -329,7 +338,40 @@ int main(int argc, char *argv[])
 		}
 
 		whichIndexPoints[i] = whichIdx;
+
+		#if QUERYREORDER==1
+		// add work data for this point to total work
+		workArrayPnt tmp;
+		tmp.pntIdx = i;
+		tmp.numDistCalcs = leastDistCalcs;
+		totalPointsWork.push_back(tmp);
+		#endif
 	}
+
+	#if QUERYREORDER==1
+	// sort total work
+	std::sort(totalPointsWork.begin(), totalPointsWork.end(), compareWorkArrayByNumDistanceCalcs);
+
+	// populate query reorder
+	for (unsigned int i=0; i<totalPointsWork.size(); i++)
+	{
+		orderedQueryPntIDs[i]=totalPointsWork[i].pntIdx;
+	}
+	#endif
+
+	// output size of each array in byes
+	unsigned int totalNNonemptyCells = 0;
+	for( int i=0; i<NUMRANDINDEXES; i ++)
+	{
+		totalNNonemptyCells += allNNonEmptyCells[i];
+	}
+	printf("\nSize of allIndex: %lu MB", (sizeof(struct grid)*(totalNNonemptyCells))/(1024*1024));
+	printf("\nSize of allIndexLookupArr: %lu MB", (sizeof(unsigned int)*(NDdataPoints.size())*(NUMRANDINDEXES))/(1024*1024));
+	printf("\nSize of allGridCellLookupArr: %lu MB", (sizeof(struct gridCellLookup)*(totalNNonemptyCells))/(1024*1024));
+	printf("\nSize of allMinArr: %lu MB", (sizeof(DTYPE)*(NUMINDEXEDDIM)*(NUMRANDINDEXES))/(1024*1024));
+	printf("\nSize of allNCells: %lu MB", (sizeof(unsigned int)*(NUMINDEXEDDIM)*(NUMRANDINDEXES))/(1024*1024));
+	printf("\nSize of allNNonEmptyCells: %lu MB\n", (sizeof(unsigned int)*(NUMRANDINDEXES))/(1024*1024));
+
 
 	uint64_t totalNeighbors = 0;
 	neighborTableLookup *neighborTable = new neighborTableLookup[NDdataPoints.size()];
@@ -343,7 +385,7 @@ int main(int argc, char *argv[])
 
 	double tstart = omp_get_wtime();
 
-	distanceTableNDGridBatches(&NDdataPoints, &epsilon, whichIndexPoints, allIndex, allGridCellLookupArr, allNNonEmptyCells, allMinArr, allNCells, allIndexLookupArr, neighborTable, &pointersToNeighbors, &totalNeighbors, workCounts);
+	distanceTableNDGridBatches(&NDdataPoints, &epsilon, whichIndexPoints, allIndex, allGridCellLookupArr, allNNonEmptyCells, allMinArr, allNCells, allIndexLookupArr, neighborTable, &pointersToNeighbors, &totalNeighbors, workCounts, orderedQueryPntIDs);
 
 	double tend = omp_get_wtime();
 
@@ -358,13 +400,13 @@ int main(int argc, char *argv[])
 	gpu_stats << totalTime << ", " << inputFname << ", " << epsilon << ", " << totalNeighbors << ", GPUNUMDIM/NUMINDEXEDDIM/NUMRANDINDEXES/ILP/STAMP/SORT/REORDER/SHORTCIRCUIT/QUERYREORDER/DTYPE(float/double): " << GPUNUMDIM << ", " << NUMINDEXEDDIM << ", " << NUMRANDINDEXES << ", " << ILP << ", " << STAMP << ", " << SORT << ", " << REORDER << ", " << SHORTCIRCUIT << ", " << QUERYREORDER << ", " << STR(DTYPE) << endl;
 	gpu_stats.close();
 
-	/*
 	// remove after testing
+	#if TESTSCRIPT == 1
 	char test_fname[] = "py_test_stats.txt";
 	gpu_stats.open(test_fname, ios::app);
-	gpu_stats << epsilon << '\t' << NUMRANDINDEXES << '\t' << (entire_time_end - entire_time_start) << '\t' << (tend - tstart) << '\t' << workCounts[0] << '\t' << workCounts[1] << '\t' << totalNeighbors << '\n';
+	gpu_stats << inputFname << '\t' << epsilon << '\t' << NUMRANDINDEXES << '\t' << (entire_time_end - entire_time_start) << '\t' << (tend - tstart) << '\t' << workCounts[0] << '\t' << workCounts[1] << '\t' << totalNeighbors << '\n';
 	gpu_stats.close();
-	*/
+	#endif
 
 #if PRINTNEIGHBORTABLE == 1
 	printNeighborTable(NDdataPoints.size(), neighborTable);

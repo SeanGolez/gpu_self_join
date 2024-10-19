@@ -26,14 +26,16 @@
 #define NUMRANDINDEXES 2
 
 //data type of the input dataset (float or double)
-#define DTYPE double
+// cmp3101 should use float!
+// a100 on monsoon can do either
+#define DTYPE float
 
 ///////////////////////
 // Random indexing types
 // exactly one of these options should be 1
-#define RANDOMOFFSETSAMEALLDIM 0
+#define RANDOMOFFSETSAMEALLDIM 1
 #define FIXEDOFFSETALLDIM 0
-#define RANDOMOFFSETFOREACHDIM 1
+#define RANDOMOFFSETFOREACHDIM 0
 ///////////////////////
 
 ///////////////////////
@@ -67,15 +69,13 @@
 #define SHORTCIRCUIT 1
 
 //Reorder the query points by work
-#define QUERYREORDER 0
-
-// note: turn off query reorder because dont want to sort by workload yet
+#define QUERYREORDER 1
 
 //End optimizations
 ///////////////////////
 
 ///////////////////////
-//Flags used in performance evaluations for papers
+//Flags used in performance evaluations for papers 
 //Do not use when timing algorithm
 #define SEARCHFILTTIME 0
 
@@ -106,3 +106,5 @@
 						 
 //end batching scheme					
 ///////////////////////
+
+#define TESTSCRIPT 0

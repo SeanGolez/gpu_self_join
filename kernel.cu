@@ -511,18 +511,18 @@ if (tid>=*N){
 	return;
 }
 
-unsigned int pointIdx = tid*(*sampleOffset);
 
 //If reordering the queries by the amount of work
 #if QUERYREORDER==1
 //the point id in the dataset
 unsigned int pointIdx=orderedQueryPntIDs[tid*(*sampleOffset)]; 
 //The offset into the database, taking into consideration the length of each dimension
-unsigned int pointID=(GPUNUMDIM)*pointIdx; 
+unsigned int pointID=(GPUNUMDIM)*pointIdx;
 #endif
 
 //If standard execution without reordering the queries by the amount of work
 #if QUERYREORDER==0
+unsigned int pointIdx = tid*(*sampleOffset);
 unsigned int pointID=pointIdx*(GPUNUMDIM);
 #endif
 

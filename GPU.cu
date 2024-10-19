@@ -269,7 +269,7 @@ return estimatedTotalSizeWithAlpha;
 void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints, DTYPE* epsilon, unsigned int * whichIndexPoints, struct grid * allIndex, 
 	struct gridCellLookup * allGridCellLookupArr, unsigned int * allNNonEmptyCells, DTYPE* allMinArr, unsigned int * allNCells, 
 	unsigned int * allIndexLookupArr, struct neighborTableLookup * neighborTable, std::vector<struct neighborDataPtrs> * pointersToNeighbors, 
-	uint64_t * totalNeighbors, CTYPE* workCounts)
+	uint64_t * totalNeighbors, CTYPE* workCounts, unsigned int * orderedQueryPntIDs)
 {
 	// create total num empty cells for all indexes variable
 	unsigned int totalNNonemptyCells = 0;
@@ -287,12 +287,15 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 	//CUDA error code:
 	cudaError_t errCode;
 
-	// note: number of point comparisons total per point
 	unsigned int * dev_orderedQueryPntIDs=NULL;
+
 	//Reordering the query points based on work
 	#if QUERYREORDER==1
+	/*
+	// note: commented this out because orderQueryPntIDs created before function call
 	unsigned int * orderedQueryPntIDs=new unsigned int[NDdataPoints->size()];
 	computeWorkDifficulty(orderedQueryPntIDs, gridCellLookupArr, nNonEmptyCells, indexLookupArr, index);
+	*/
 	//allocate memory on device:
 	gpuErrchk(cudaMalloc( (void**)&dev_orderedQueryPntIDs, sizeof(unsigned int)*NDdataPoints->size()));
 	gpuErrchk(cudaMemcpy(dev_orderedQueryPntIDs, orderedQueryPntIDs, sizeof(unsigned int)*NDdataPoints->size(), cudaMemcpyHostToDevice));
