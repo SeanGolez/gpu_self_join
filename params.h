@@ -23,7 +23,7 @@
 #define NUMINDEXEDDIM 3
 
 //Number of random indexes to generate
-#define NUMRANDINDEXES 2
+#define NUMRANDINDEXES 9
 
 //data type of the input dataset (float or double)
 // cmp3101 should use float!
@@ -107,4 +107,4 @@
 //end batching scheme					
 ///////////////////////
 
-#define TESTSCRIPT 0
+#define TESTSCRIPT 1

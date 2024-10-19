@@ -404,7 +404,7 @@ int main(int argc, char *argv[])
 	#if TESTSCRIPT == 1
 	char test_fname[] = "py_test_stats.txt";
 	gpu_stats.open(test_fname, ios::app);
-	gpu_stats << inputFname << '\t' << epsilon << '\t' << NUMRANDINDEXES << '\t' << (entire_time_end - entire_time_start) << '\t' << (tend - tstart) << '\t' << workCounts[0] << '\t' << workCounts[1] << '\t' << totalNeighbors << '\n';
+	gpu_stats << inputFname << ',' << epsilon << ',' << NUMRANDINDEXES << ',' << (entire_time_end - entire_time_start) << ',' << (tend - tstart) << ',' << workCounts[0] << ',' << workCounts[1] << ',' << totalNeighbors << '\n';
 	gpu_stats.close();
 	#endif
 
