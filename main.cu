@@ -419,6 +419,7 @@ int main(int argc, char *argv[])
 	delete[] allIndex;
 	delete[] allGridCellLookupArr;
 	delete[] whichIndexPoints;
+	delete[] orderedQueryPntIDs;
 }
 #endif // end #if not Python (standard C version)
 

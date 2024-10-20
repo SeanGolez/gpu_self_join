@@ -164,7 +164,7 @@ __global__ void kernelUniqueKeys(int * pointIDKey, unsigned int * N, int * uniqu
 
 __global__ void kernelNDGridIndexGlobal(unsigned int *debug1, unsigned int *debug2, unsigned int *N,  
 	unsigned int * offset, unsigned int *batchNum, unsigned int * DBSIZE, DTYPE* database, DTYPE* epsilon, unsigned int *whichIndexPoints, struct grid * allIndex, unsigned int * allIndexLookupArr, 
-	struct gridCellLookup * allGridCellLookupArr, DTYPE* allMinArr, unsigned int * allNCells, unsigned int * cnt, 
+	struct gridCellLookup * allGridCellLookupArr, DTYPE* allMinArr, struct gridCellLookup ** startGridPtrs, struct grid ** startIndexPtrs, unsigned int * allNCells, unsigned int * cnt, 
 	unsigned int * allNNonEmptyCells, int * pointIDKey, int * pointInDistVal, unsigned int * orderedQueryPntIDs, CTYPE* workCounts)
 {
 
@@ -261,7 +261,7 @@ for (int i=0; i<NUMINDEXEDDIM; i++){
 	for (int x=0; x<NUMINDEXEDDIM; x++){
 	indexes[x]=loopRng[x];	
 	}
-		evaluateCell(&whichIndex, N, allNCells, indexes, allGridCellLookupArr, allNNonEmptyCells, DBSIZE, database, epsilon, allIndex, allIndexLookupArr, point, cnt, pointIDKey, pointInDistVal, pointIdx, false, nDCellIDs, workCounts);
+		evaluateCell(&whichIndex, N, allNCells, indexes, allGridCellLookupArr, allNNonEmptyCells, DBSIZE, database, epsilon, allIndex, allIndexLookupArr, point, cnt, pointIDKey, pointInDistVal, pointIdx, false, nDCellIDs, workCounts, startGridPtrs, startIndexPtrs);
 	
 	} //end loop body
 #endif
@@ -342,7 +342,7 @@ __forceinline__ __device__ void evalPoint(unsigned int* whichIndex, unsigned int
 
 
 
-__device__ void evaluateCell(unsigned int* whichIndex, unsigned int *N, unsigned int* allNCells, unsigned int* indexes, struct gridCellLookup * allGridCellLookupArr, unsigned int* allNNonEmptyCells, unsigned int * DBSIZE, DTYPE* database, DTYPE* epsilon, struct grid * allIndex, unsigned int * allIndexLookupArr, DTYPE* point, unsigned int* cnt,int* pointIDKey, int* pointInDistVal, int pointIdx, bool differentCell, unsigned int* nDCellIDs, CTYPE* workCounts) {
+__device__ void evaluateCell(unsigned int* whichIndex, unsigned int *N, unsigned int* allNCells, unsigned int* indexes, struct gridCellLookup * allGridCellLookupArr, unsigned int* allNNonEmptyCells, unsigned int * DBSIZE, DTYPE* database, DTYPE* epsilon, struct grid * allIndex, unsigned int * allIndexLookupArr, DTYPE* point, unsigned int* cnt,int* pointIDKey, int* pointInDistVal, int pointIdx, bool differentCell, unsigned int* nDCellIDs, CTYPE* workCounts, struct gridCellLookup ** startGridPtrs, struct grid ** startIndexPtrs) {
 
 
 #if COUNTMETRICS == 1
@@ -355,26 +355,15 @@ __device__ void evaluateCell(unsigned int* whichIndex, unsigned int *N, unsigned
 	}
 
 	uint64_t calcLinearID=getLinearID_nDimensionsGPU(indexes, nCells, NUMINDEXEDDIM);
-
-	//compare the linear ID with the gridCellLookupArr to determine if the cell is non-empty: this can happen because one point says 
-	//a cell in a particular dimension is non-empty, but that's because it was related to a different point (not adjacent to the query point)
-
 	struct gridCellLookup tmp;
 	tmp.gridLinearID=calcLinearID;
 
-	// increment startGridPtr to begining of grid for index
-	gridCellLookup * startGridPtr = allGridCellLookupArr;
-	grid * startIndexPtr = allIndex;
-	for(int i = 0; i<(*whichIndex); i++)
-	{
-		startGridPtr += allNNonEmptyCells[i];
-		startIndexPtr += allNNonEmptyCells[i];
-	}
-
-	if (thrust::binary_search(thrust::seq, startGridPtr, startGridPtr+(allNNonEmptyCells[(*whichIndex)]), gridCellLookup(tmp))){
+	//compare the linear ID with the gridCellLookupArr to determine if the cell is non-empty: this can happen because one point says 
+	//a cell in a particular dimension is non-empty, but that's because it was related to a different point (not adjacent to the query point)
+	if (thrust::binary_search(thrust::seq, startGridPtrs[(*whichIndex)], startGridPtrs[(*whichIndex)]+(allNNonEmptyCells[(*whichIndex)]), gridCellLookup(tmp))){
 
         //compute the neighbors for the adjacent non-empty cell
-        struct gridCellLookup * resultBinSearch=thrust::lower_bound(thrust::seq, startGridPtr, startGridPtr+(allNNonEmptyCells[(*whichIndex)]), gridCellLookup(tmp));
+        struct gridCellLookup * resultBinSearch=thrust::lower_bound(thrust::seq, startGridPtrs[(*whichIndex)], startGridPtrs[(*whichIndex)]+(allNNonEmptyCells[(*whichIndex)]), gridCellLookup(tmp));
         unsigned int GridIndex=resultBinSearch->idx;
 #if SORT==1
 	int sortedDim;
@@ -447,7 +436,7 @@ __device__ void evaluateCell(unsigned int* whichIndex, unsigned int *N, unsigned
 
 // Brute force method if SORTED != 1
 #else
-	for (int k=(startIndexPtr+GridIndex)->indexmin; k<=(startIndexPtr+GridIndex)->indexmax; k++){
+	for (int k=(startIndexPtrs[(*whichIndex)]+GridIndex)->indexmin; k<=(startIndexPtrs[(*whichIndex)]+GridIndex)->indexmax; k++){
 		evalPoint(whichIndex, N, allIndexLookupArr, k, DBSIZE, database, epsilon, point, cnt, pointIDKey, pointInDistVal, pointIdx, differentCell);
 #if COUNTMETRICS == 1
 			atomicAdd(&workCounts[0],1);
@@ -500,7 +489,7 @@ return;
 //for descriptions of the parameters, see regular kernel that computes the result (not the batch estimator)
 __global__ void kernelNDGridIndexBatchEstimator(unsigned int *debug1, unsigned int *debug2, unsigned int *N,  
 	unsigned int * sampleOffset, unsigned int * DBSIZE, DTYPE* database, DTYPE* epsilon, unsigned int * whichIndexPoints, struct grid * allIndex, unsigned int * allIndexLookupArr, 
-	struct gridCellLookup * allGridCellLookupArr, DTYPE* allMinArr, unsigned int * allNCells, unsigned int * cnt, 
+	struct gridCellLookup * allGridCellLookupArr, DTYPE* allMinArr, struct gridCellLookup ** startGridPtrs, struct grid ** startIndexPtrs, unsigned int * allNCells, unsigned int * cnt, 
 	unsigned int * allNNonEmptyCells, unsigned int * orderedQueryPntIDs)
 {
 
@@ -578,20 +567,12 @@ for (int i=0; i<NUMINDEXEDDIM; i++){
 	struct gridCellLookup tmp;
 	tmp.gridLinearID=calcLinearID;
 
-	// increment startGridPtr to begining of grid for index
-	gridCellLookup * startGridPtr = allGridCellLookupArr;
-	grid * startIndexPtr = allIndex;
-	for(int i = 0; i<whichIndex; i++)
-	{
-		startGridPtr += allNNonEmptyCells[i];
-		startIndexPtr += allNNonEmptyCells[i];
-	}
 	
-	if (thrust::binary_search(thrust::seq, startGridPtr, startGridPtr+(allNNonEmptyCells[whichIndex]), gridCellLookup(tmp))){	
-		struct gridCellLookup * resultBinSearch=thrust::lower_bound(thrust::seq, startGridPtr, startGridPtr+(allNNonEmptyCells[whichIndex]), gridCellLookup(tmp));
+	if (thrust::binary_search(thrust::seq, startGridPtrs[whichIndex], startGridPtrs[whichIndex]+(allNNonEmptyCells[whichIndex]), gridCellLookup(tmp))){	
+		struct gridCellLookup * resultBinSearch=thrust::lower_bound(thrust::seq, startGridPtrs[whichIndex], startGridPtrs[whichIndex]+(allNNonEmptyCells[whichIndex]), gridCellLookup(tmp));
 		unsigned int GridIndex=resultBinSearch->idx;
 
-		for (int k=(startIndexPtr+GridIndex)->indexmin; k<=(startIndexPtr+GridIndex)->indexmax; k++){
+		for (int k=(startIndexPtrs[whichIndex]+GridIndex)->indexmin; k<=(startIndexPtrs[whichIndex]+GridIndex)->indexmax; k++){
 				DTYPE runningTotalDist=0;
 				unsigned int dataIdx=allIndexLookupArr[k+(whichIndex*(*DBSIZE))];
 

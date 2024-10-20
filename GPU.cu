@@ -56,7 +56,7 @@ bool compareByPointValue(const key_val_sort &a, const key_val_sort &b)
 
 
 unsigned long long callGPUBatchEst(unsigned int * DBSIZE, unsigned int * dev_DBSIZE, DTYPE* dev_database, DTYPE* dev_epsilon, unsigned int * dev_whichIndexPoints, struct grid * dev_grid, 
-	unsigned int * dev_indexLookupArr, struct gridCellLookup * dev_gridCellLookupArr, DTYPE* dev_minArr, 
+	unsigned int * dev_indexLookupArr, struct gridCellLookup * dev_gridCellLookupArr, DTYPE* dev_minArr, struct gridCellLookup ** dev_startGridPtrs, struct grid ** dev_startIndexPtrs,
 	unsigned int * dev_nCells, unsigned int * dev_nNonEmptyCells, unsigned int * dev_orderedQueryPntIDs, unsigned int * retNumBatches, unsigned int * retGPUBufferSize)
 {
 
@@ -192,7 +192,7 @@ unsigned long long callGPUBatchEst(unsigned int * DBSIZE, unsigned int * dev_DBS
 
 	kernelNDGridIndexBatchEstimator<<< TOTALBLOCKSBATCHEST, BLOCKSIZE>>>(dev_debug1, dev_debug2, dev_N_batchEst, 
 		dev_sampleOffset, dev_DBSIZE, dev_database, dev_epsilon, dev_whichIndexPoints, dev_grid, dev_indexLookupArr, 
-		dev_gridCellLookupArr, dev_minArr, dev_nCells, dev_cnt_batchEst, dev_nNonEmptyCells, dev_orderedQueryPntIDs);
+		dev_gridCellLookupArr, dev_minArr, dev_startGridPtrs, dev_startIndexPtrs, dev_nCells, dev_cnt_batchEst, dev_nNonEmptyCells, dev_orderedQueryPntIDs);
 		cout<<"\n** ERROR FROM KERNEL LAUNCH OF BATCH ESTIMATOR: "<<cudaGetLastError();
 		// find the size of the number of results
 		errCode=cudaMemcpy( cnt_batchEst, dev_cnt_batchEst, sizeof(unsigned int), cudaMemcpyDeviceToHost);
@@ -277,7 +277,6 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 	{
 		totalNNonemptyCells += allNNonEmptyCells[i];
 	}
-
 
 
 	double tKernelResultsStart=omp_get_wtime();
@@ -445,6 +444,43 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 	///////////////////////////////////
 	//END COPY THE GRID CELL LOOKUP ARRAY 
 	///////////////////////////////////
+
+		///////////////////////////////////////////////////
+	// create array that has the grid lookup partitions
+	///////////////////////////////////////////////////
+	// increment startGridPtr to begining of grid for index
+	struct gridCellLookup ** startGridPtrs = new struct gridCellLookup *[NUMRANDINDEXES];
+	struct grid ** startIndexPtrs = new struct grid *[NUMRANDINDEXES];
+	
+	struct gridCellLookup * dev_startGridPtr = dev_allGridCellLookupArr;
+	struct grid * dev_startIndexPtr = dev_allGrids;
+	for(int i = 0; i<(NUMRANDINDEXES); i++)
+	{
+		startGridPtrs[i] = dev_startGridPtr;
+		startIndexPtrs[i] = dev_startIndexPtr;
+		dev_startGridPtr += allNNonEmptyCells[i];
+		dev_startIndexPtr += allNNonEmptyCells[i];
+	}
+
+	struct gridCellLookup ** dev_startGridPtrs;
+
+	//allocate memory on device:
+	gpuErrchk(cudaMalloc( (void**)&dev_startGridPtrs, sizeof(struct gridCellLookup*)*(NUMRANDINDEXES)));
+
+	//copy array to the device:
+	gpuErrchk(cudaMemcpy(dev_startGridPtrs, startGridPtrs, sizeof(struct gridCellLookup*)*(NUMRANDINDEXES), cudaMemcpyHostToDevice));
+
+	struct grid ** dev_startIndexPtrs;
+
+	//allocate memory on device:
+	gpuErrchk(cudaMalloc( (void**)&dev_startIndexPtrs, sizeof(struct grid*)*(NUMRANDINDEXES)));
+
+	//copy array to the device:
+	gpuErrchk(cudaMemcpy(dev_startIndexPtrs, startIndexPtrs, sizeof(struct grid*)*(NUMRANDINDEXES), cudaMemcpyHostToDevice));
+
+	//////////////////////////////////////////////////
+	// end create array that has the grid lookup partitions
+	//////////////////////////////////////////////////
 
 
 	
@@ -631,7 +667,7 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 	unsigned int GPUBufferSize=0;
 
 	double tstartbatchest=omp_get_wtime();
-	estimatedNeighbors=callGPUBatchEst(DBSIZE, dev_DBSIZE, dev_database, dev_epsilon, dev_whichIndexPoints, dev_allGrids, dev_allIndexLookupArr, dev_allGridCellLookupArr, dev_allMinArr, dev_allNCells, dev_allNNonEmptyCells, dev_orderedQueryPntIDs, &numBatches, &GPUBufferSize);	
+	estimatedNeighbors=callGPUBatchEst(DBSIZE, dev_DBSIZE, dev_database, dev_epsilon, dev_whichIndexPoints, dev_allGrids, dev_allIndexLookupArr, dev_allGridCellLookupArr, dev_allMinArr, dev_startGridPtrs, dev_startIndexPtrs, dev_allNCells, dev_allNNonEmptyCells, dev_orderedQueryPntIDs, &numBatches, &GPUBufferSize);	
 	double tendbatchest=omp_get_wtime();
 	printf("\nTime to estimate batches: %f",tendbatchest - tstartbatchest);
 	printf("\nIn Calling fn: Estimated neighbors: %llu, num. batches: %d, GPU Buffer size: %d",estimatedNeighbors, numBatches,GPUBufferSize);
@@ -861,7 +897,7 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 			//0 is shared memory pool
 			kernelNDGridIndexGlobal<<< TOTALBLOCKS, BLOCKSIZE, 0, stream[tid]>>>(dev_debug1, dev_debug2, &dev_N[tid], 
 		&dev_offset[tid], &dev_batchNumber[tid], dev_DBSIZE, dev_database, dev_epsilon, dev_whichIndexPoints, dev_allGrids, dev_allIndexLookupArr, 
-		dev_allGridCellLookupArr, dev_allMinArr, dev_allNCells, &dev_cnt[tid], dev_allNNonEmptyCells, dev_pointIDKey[tid], dev_pointInDistValue[tid], dev_orderedQueryPntIDs, dev_workCounts);
+		dev_allGridCellLookupArr, dev_allMinArr, dev_startGridPtrs, dev_startIndexPtrs, dev_allNCells, &dev_cnt[tid], dev_allNNonEmptyCells, dev_pointIDKey[tid], dev_pointInDistValue[tid], dev_orderedQueryPntIDs, dev_workCounts);
 
 			// errCode=cudaDeviceSynchronize();
 			// cout <<"\n\nError from device synchronize: "<<errCode;
@@ -1102,7 +1138,12 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 	cudaFree(dev_N); 	
 	cudaFree(dev_cnt); 
 	cudaFree(dev_offset); 
-	cudaFree(dev_batchNumber); 
+	cudaFree(dev_batchNumber);
+
+	delete[] startGridPtrs;
+	delete[] startIndexPtrs;
+	cudaFree(dev_startGridPtrs);
+	cudaFree(dev_startIndexPtrs);
 
 	
 	//free data related to the individual streams for each batch
