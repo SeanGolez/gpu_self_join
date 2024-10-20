@@ -7,7 +7,7 @@ DATASET = "/home/sgolez/datasets/iono_57min_5.16Mpts_3D_normalized_0_1.txt"
 NUM_TRIALS = 3
 
 def main():
-    out_df = pd.DataFrame(columns=["Dataset", "Epsilon", "#random indexes", "Total execution time", "Kernel execution time", "Point comparisons", "Cell evaluations", "Total neighbors", "Method"])
+    out_df = pd.DataFrame(columns=["Dataset", "Epsilon", "# random indexes", "Total execution time", "Kernel execution time", "Point comparisons", "Cell evaluations", "Total neighbors", "Method"])
 
     # loop through each option
     for option_idx in range(3):
