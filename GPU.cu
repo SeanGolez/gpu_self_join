@@ -55,7 +55,7 @@ bool compareByPointValue(const key_val_sort &a, const key_val_sort &b)
 }
 
 
-unsigned long long callGPUBatchEst(unsigned int * DBSIZE, unsigned int * dev_DBSIZE, DTYPE* dev_database, DTYPE* dev_epsilon, unsigned int * dev_whichIndexPoints, struct grid * dev_grid, 
+unsigned long long callGPUBatchEst(unsigned int DBSIZE, DTYPE* dev_database, DTYPE epsilon, unsigned int * dev_whichIndexPoints, struct grid * dev_grid, 
 	unsigned int * dev_indexLookupArr, struct gridCellLookup * dev_gridCellLookupArr, DTYPE* dev_minArr, 
 	unsigned int * dev_nCells, unsigned int * dev_nNonEmptyCells, unsigned int * dev_orderedQueryPntIDs, unsigned int * retNumBatches, unsigned int * retGPUBufferSize)
 {
@@ -97,7 +97,7 @@ unsigned long long callGPUBatchEst(unsigned int * DBSIZE, unsigned int * dev_DBS
 
 	unsigned int * N_batchEst; 
 	N_batchEst=(unsigned int*)malloc(sizeof(unsigned int));
-	*N_batchEst=*DBSIZE*sampleRate;
+	*N_batchEst=DBSIZE*sampleRate;
 
 
 	//allocate on the device
@@ -185,13 +185,13 @@ unsigned long long callGPUBatchEst(unsigned int * DBSIZE, unsigned int * dev_DBS
 
 
 
-	const int TOTALBLOCKSBATCHEST=ceil((1.0*(*DBSIZE)*sampleRate)/(1.0*BLOCKSIZE));	
+	const int TOTALBLOCKSBATCHEST=ceil((1.0*(DBSIZE)*sampleRate)/(1.0*BLOCKSIZE));	
 	printf("\ntotal blocks: %d",TOTALBLOCKSBATCHEST);
 
 	
 
 	kernelNDGridIndexBatchEstimator<<< TOTALBLOCKSBATCHEST, BLOCKSIZE>>>(dev_debug1, dev_debug2, dev_N_batchEst, 
-		dev_sampleOffset, dev_DBSIZE, dev_database, dev_epsilon, dev_whichIndexPoints, dev_grid, dev_indexLookupArr, 
+		dev_sampleOffset, DBSIZE, dev_database, epsilon, dev_whichIndexPoints, dev_grid, dev_indexLookupArr, 
 		dev_gridCellLookupArr, dev_minArr, dev_nCells, dev_cnt_batchEst, dev_nNonEmptyCells, dev_orderedQueryPntIDs);
 		cout<<"\n** ERROR FROM KERNEL LAUNCH OF BATCH ESTIMATOR: "<<cudaGetLastError();
 		// find the size of the number of results
@@ -266,7 +266,7 @@ return estimatedTotalSizeWithAlpha;
 
 }
 
-void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints, DTYPE* epsilon, unsigned int * whichIndexPoints, struct grid * allIndex, 
+void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints, const DTYPE epsilon, unsigned int * whichIndexPoints, struct grid * allIndex, 
 	struct gridCellLookup * allGridCellLookupArr, unsigned int * allNNonEmptyCells, DTYPE* allMinArr, unsigned int * allNCells, 
 	unsigned int * allIndexLookupArr, struct neighborTableLookup * neighborTable, std::vector<struct neighborDataPtrs> * pointersToNeighbors, 
 	uint64_t * totalNeighbors, CTYPE* workCounts, unsigned int * orderedQueryPntIDs)
@@ -305,34 +305,26 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 	///////////////////////////////////
 	//COPY THE DATABASE TO THE GPU
 	///////////////////////////////////
-	unsigned int * DBSIZE;
-	DBSIZE=(unsigned int*)malloc(sizeof(unsigned int));
-	*DBSIZE=NDdataPoints->size();
+	const unsigned int DBSIZE = NDdataPoints->size();
+
+	// TODO: use const unsigned int DBSIZE, then dont need to cudaMalloc, same for epsilon
 	
-	printf("\nIn main GPU method: DBSIZE is: %u",*DBSIZE);cout.flush();
+	printf("\nIn main GPU method: DBSIZE is: %u",DBSIZE);cout.flush();
 	
-	DTYPE* database= (DTYPE*)malloc(sizeof(DTYPE)*(*DBSIZE)*(GPUNUMDIM));  
+	DTYPE* database= (DTYPE*)malloc(sizeof(DTYPE)*(DBSIZE)*(GPUNUMDIM));  
 	DTYPE* dev_database;
 	
 	//allocate memory on device:
-	gpuErrchk(cudaMalloc( (void**)&dev_database, sizeof(DTYPE)*(GPUNUMDIM)*(*DBSIZE)));
+	gpuErrchk(cudaMalloc( (void**)&dev_database, sizeof(DTYPE)*(GPUNUMDIM)*(DBSIZE)));
 
 	//copy the database from the ND vector to the array:
-	for (int i=0; i<(*DBSIZE); i++){
+	for (int i=0; i<(DBSIZE); i++){
 		std::copy((*NDdataPoints)[i].begin(), (*NDdataPoints)[i].end(), database+(i*(GPUNUMDIM)));
 	}
 
 
 	//copy database to the device
-	gpuErrchk(cudaMemcpy(dev_database, database, sizeof(DTYPE)*(GPUNUMDIM)*(*DBSIZE), cudaMemcpyHostToDevice));
-
-
-	unsigned int * dev_DBSIZE;
-	//allocate memory on device:
-	gpuErrchk(cudaMalloc( (void**)&dev_DBSIZE, sizeof(unsigned int)));
-	
-	//copy grid index to the device:
-	gpuErrchk(cudaMemcpy(dev_DBSIZE, DBSIZE, sizeof(unsigned int), cudaMemcpyHostToDevice));
+	gpuErrchk(cudaMemcpy(dev_database, database, sizeof(DTYPE)*(GPUNUMDIM)*(DBSIZE), cudaMemcpyHostToDevice));
 
 	///////////////////////////////////
 	//END COPY THE DATABASE TO THE GPU
@@ -414,10 +406,10 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 	unsigned int * dev_allIndexLookupArr;
 
 	//allocate memory on device:
-	gpuErrchk(cudaMalloc( (void**)&dev_allIndexLookupArr, sizeof(unsigned int)*(*DBSIZE)*(NUMRANDINDEXES)));
+	gpuErrchk(cudaMalloc( (void**)&dev_allIndexLookupArr, sizeof(unsigned int)*(DBSIZE)*(NUMRANDINDEXES)));
 
 	//copy lookup array to the device:
-	gpuErrchk(cudaMemcpy(dev_allIndexLookupArr, allIndexLookupArr, sizeof(unsigned int)*(*DBSIZE)*(NUMRANDINDEXES), cudaMemcpyHostToDevice));
+	gpuErrchk(cudaMemcpy(dev_allIndexLookupArr, allIndexLookupArr, sizeof(unsigned int)*(DBSIZE)*(NUMRANDINDEXES), cudaMemcpyHostToDevice));
 	
 	///////////////////////////////////
 	//END COPY THE LOOKUP ARRAY TO THE DATA ELEMS TO THE GPU
@@ -503,7 +495,7 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 	///////////////////////////////////
 	
 	
-
+	/*
 	///////////////////////////////////
 	//EPSILON
 	///////////////////////////////////
@@ -519,6 +511,7 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 	///////////////////////////////////
 	//END EPSILON
 	///////////////////////////////////
+	*/
 
 
 	///////////////////////////////////
@@ -542,9 +535,9 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 	unsigned int * dev_whichIndexPoints;
 	
 	//Allocate on the device
-	gpuErrchk(cudaMalloc((void**)&dev_whichIndexPoints, sizeof(unsigned int)*(*DBSIZE)));
+	gpuErrchk(cudaMalloc((void**)&dev_whichIndexPoints, sizeof(unsigned int)*(DBSIZE)));
 	//copy to device
-	gpuErrchk(cudaMemcpy( dev_whichIndexPoints, whichIndexPoints, sizeof(unsigned int)*(*DBSIZE), cudaMemcpyHostToDevice ));
+	gpuErrchk(cudaMemcpy( dev_whichIndexPoints, whichIndexPoints, sizeof(unsigned int)*(DBSIZE), cudaMemcpyHostToDevice ));
 
 	///////////////////////////////////
 	//WHICH INDEX TO USE FOR EACH POINT
@@ -631,7 +624,7 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 	unsigned int GPUBufferSize=0;
 
 	double tstartbatchest=omp_get_wtime();
-	estimatedNeighbors=callGPUBatchEst(DBSIZE, dev_DBSIZE, dev_database, dev_epsilon, dev_whichIndexPoints, dev_allGrids, dev_allIndexLookupArr, dev_allGridCellLookupArr, dev_allMinArr, dev_allNCells, dev_allNNonEmptyCells, dev_orderedQueryPntIDs, &numBatches, &GPUBufferSize);	
+	estimatedNeighbors=callGPUBatchEst(DBSIZE, dev_database, epsilon, dev_whichIndexPoints, dev_allGrids, dev_allIndexLookupArr, dev_allGridCellLookupArr, dev_allMinArr, dev_allNCells, dev_allNNonEmptyCells, dev_orderedQueryPntIDs, &numBatches, &GPUBufferSize);	
 	double tendbatchest=omp_get_wtime();
 	printf("\nTime to estimate batches: %f",tendbatchest - tstartbatchest);
 	printf("\nIn Calling fn: Estimated neighbors: %llu, num. batches: %d, GPU Buffer size: %d",estimatedNeighbors, numBatches,GPUBufferSize);
@@ -798,8 +791,8 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 		gpuErrchk(cudaMemcpy(dev_workCounts, workCounts, 2*sizeof(CTYPE), cudaMemcpyHostToDevice ));
 #endif
 
-	unsigned int batchSize=(*DBSIZE)/numBatches;
-	unsigned int batchesThatHaveOneMore=(*DBSIZE)-(batchSize*numBatches); //batch number 0- < this value have one more
+	unsigned int batchSize=(DBSIZE)/numBatches;
+	unsigned int batchesThatHaveOneMore=(DBSIZE)-(batchSize*numBatches); //batch number 0- < this value have one more
 	printf("\nBatches that have one more GPU thread: %u batchSize(N): %u, \n",batchesThatHaveOneMore,batchSize);
 
 	uint64_t totalResultsLoop=0;
@@ -860,7 +853,7 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 			//execute kernel	
 			//0 is shared memory pool
 			kernelNDGridIndexGlobal<<< TOTALBLOCKS, BLOCKSIZE, 0, stream[tid]>>>(dev_debug1, dev_debug2, &dev_N[tid], 
-		&dev_offset[tid], &dev_batchNumber[tid], dev_DBSIZE, dev_database, dev_epsilon, dev_whichIndexPoints, dev_allGrids, dev_allIndexLookupArr, 
+		&dev_offset[tid], &dev_batchNumber[tid], DBSIZE, dev_database, epsilon, dev_whichIndexPoints, dev_allGrids, dev_allIndexLookupArr, 
 		dev_allGridCellLookupArr, dev_allMinArr, dev_allNCells, &dev_cnt[tid], dev_allNNonEmptyCells, dev_pointIDKey[tid], dev_pointInDistValue[tid], dev_orderedQueryPntIDs, dev_workCounts);
 
 			// errCode=cudaDeviceSynchronize();
@@ -1088,10 +1081,8 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 
 	//free the data on the device
 	cudaFree(dev_database);
-	cudaFree(dev_DBSIZE);
 	cudaFree(dev_debug1);
 	cudaFree(dev_debug2);
-	cudaFree(dev_epsilon);
 	cudaFree(dev_allGrids);
 	cudaFree(dev_allGridCellLookupArr);
 	cudaFree(dev_allIndexLookupArr);
