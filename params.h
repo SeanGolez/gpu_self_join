@@ -23,7 +23,7 @@
 #define NUMINDEXEDDIM 3
 
 //Number of random indexes to generate
-#define NUMRANDINDEXES 9
+#define NUMRANDINDEXES 2
 
 //data type of the input dataset (float or double)
 // cmp3101 should use float!
@@ -33,9 +33,9 @@
 ///////////////////////
 // Random indexing types
 // exactly one of these options should be 1
-#define RANDOMOFFSETSAMEALLDIM 1
+#define RANDOMOFFSETSAMEALLDIM 0
 #define FIXEDOFFSETALLDIM 0
-#define RANDOMOFFSETFOREACHDIM 0
+#define RANDOMOFFSETFOREACHDIM 1
 ///////////////////////
 
 ///////////////////////
@@ -61,7 +61,7 @@
 #define REORDER 1
 
 //For ILP in distance calculations
-#define ILP 8 //0-default no ILP
+#define ILP 0 //0-default no ILP
 			  //The number is the number of registers/cached elements
 
 
@@ -81,7 +81,7 @@
 
 //used to see how many point comparisons and grid cell searches
 //For performance evaluation purposes, and not when timing the algorithm
-#define COUNTMETRICS 1
+#define COUNTMETRICS 0
 
 //Data type for the above
 #define CTYPE unsigned long long

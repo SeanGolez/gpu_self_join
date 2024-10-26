@@ -15,7 +15,7 @@ EXECUTABLE = main
 
 
 #update your compute capability here
-COMPUTE_CAPABILITY = 75
+COMPUTE_CAPABILITY = 80
 COMPUTE_CAPABILITY_FLAGS = -arch=compute_$(COMPUTE_CAPABILITY) -code=sm_$(COMPUTE_CAPABILITY)
 
 
