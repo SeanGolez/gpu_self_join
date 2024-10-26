@@ -163,7 +163,7 @@ __global__ void kernelUniqueKeys(int * pointIDKey, unsigned int * N, int * uniqu
 // int * pointIDKey, int * pointInDistVal - result set to be sorted as key/value pairs
 
 __global__ void kernelNDGridIndexGlobal(unsigned int *debug1, unsigned int *debug2, unsigned int *N,  
-	unsigned int * offset, unsigned int *batchNum, unsigned int * DBSIZE, DTYPE* database, DTYPE* epsilon, unsigned int *whichIndexPoints, struct grid * allIndex, unsigned int * allIndexLookupArr, 
+	unsigned int * offset, unsigned int *batchNum, const unsigned int DBSIZE, DTYPE* database, const DTYPE epsilon, unsigned int *whichIndexPoints, struct grid * allIndex, unsigned int * allIndexLookupArr, 
 	struct gridCellLookup * allGridCellLookupArr, DTYPE* allMinArr, unsigned int * allNCells, unsigned int * cnt, 
 	unsigned int * allNNonEmptyCells, int * pointIDKey, int * pointInDistVal, unsigned int * orderedQueryPntIDs, CTYPE* workCounts)
 {
@@ -207,17 +207,20 @@ for (int i=0; i<GPUNUMDIM; i++){
 }
 
 // get which index to use for point
-unsigned int whichIndex = whichIndexPoints[pointIdx];
+const unsigned int whichIndex = whichIndexPoints[pointIdx];
 
 //calculate the coords of the Cell for the point
 //and the min/max ranges in each dimension
 unsigned int nDCellIDs[NUMINDEXEDDIM];
 unsigned int nDMinCellIDs[NUMINDEXEDDIM];
 unsigned int nDMaxCellIDs[NUMINDEXEDDIM];
-for (int i=0; i<NUMINDEXEDDIM; i++){
-	nDCellIDs[i]=(point[i]-allMinArr[i + (whichIndex * NUMINDEXEDDIM)])/(*epsilon);
+
+for (unsigned int i=0; i<NUMINDEXEDDIM; i++){
+	// TEST: make new variable for i + (whichIndex * NUMINDEXEDDIM)
+	const unsigned int tmpIdx = (whichIndex * NUMINDEXEDDIM);
+	nDCellIDs[i]=(point[i]-allMinArr[i + tmpIdx])/(epsilon);
 	nDMinCellIDs[i]=max(0,nDCellIDs[i]-1); //boundary conditions (don't go beyond cell 0)
-	nDMaxCellIDs[i]=min(allNCells[i + (whichIndex * NUMINDEXEDDIM)]-1,nDCellIDs[i]+1); //boundary conditions (don't go beyond the maximum number of cells)
+	nDMaxCellIDs[i]=min(allNCells[i + tmpIdx]-1,nDCellIDs[i]+1); //boundary conditions (don't go beyond the maximum number of cells)
 
 }
 	
@@ -261,16 +264,16 @@ for (int i=0; i<NUMINDEXEDDIM; i++){
 	for (int x=0; x<NUMINDEXEDDIM; x++){
 	indexes[x]=loopRng[x];	
 	}
-		evaluateCell(&whichIndex, N, allNCells, indexes, allGridCellLookupArr, allNNonEmptyCells, DBSIZE, database, epsilon, allIndex, allIndexLookupArr, point, cnt, pointIDKey, pointInDistVal, pointIdx, false, nDCellIDs, workCounts);
+		evaluateCell(whichIndex, N, allNCells, indexes, allGridCellLookupArr, allNNonEmptyCells, DBSIZE, database, epsilon, allIndex, allIndexLookupArr, point, cnt, pointIDKey, pointInDistVal, pointIdx, false, nDCellIDs, workCounts);
 	
 	} //end loop body
 #endif
 
 }
 
-__forceinline__ __device__ void evalPoint(unsigned int* whichIndex, unsigned int *N, unsigned int* allIndexLookupArr, int k, unsigned int * DBSIZE, DTYPE* database, DTYPE* epsilon, DTYPE* point, unsigned int* cnt, int* pointIDKey, int* pointInDistVal, int pointIdx, bool differentCell) {
+__forceinline__ __device__ void evalPoint(const unsigned int whichIndex, unsigned int *N, unsigned int* allIndexLookupArr, int k, const unsigned int DBSIZE, DTYPE* database, const DTYPE epsilon, DTYPE* point, unsigned int* cnt, int* pointIDKey, int* pointInDistVal, int pointIdx, bool differentCell) {
 	
-	unsigned int dataIdx=allIndexLookupArr[k+((*whichIndex)*(*DBSIZE))];
+	unsigned int dataIdx=allIndexLookupArr[k+((whichIndex)*(DBSIZE))];
 
 	//If we use ILP
 	#if ILP>0
@@ -312,7 +315,7 @@ __forceinline__ __device__ void evalPoint(unsigned int* whichIndex, unsigned int
     for (int l=0; l<GPUNUMDIM; l++){
       runningTotalDist+=(database[dataIdx*GPUNUMDIM+l]-point[l])*(database[dataIdx*GPUNUMDIM+l]-point[l]);
       #if SHORTCIRCUIT==1
-      if (sqrt(runningTotalDist)>(*epsilon)) {
+      if (sqrt(runningTotalDist)>(epsilon)) {
           return;
       }
       #endif
@@ -325,7 +328,7 @@ __forceinline__ __device__ void evalPoint(unsigned int* whichIndex, unsigned int
         if (sqrt(runningDist[0])<=(*epsilon)){
         #endif
         #if ILP==0
-        if (sqrt(runningTotalDist)<=(*epsilon)){	
+        if (sqrt(runningTotalDist)<=(epsilon)){	
         #endif	
 		        
           unsigned int idx=atomicAdd(cnt,int(1));
@@ -342,7 +345,7 @@ __forceinline__ __device__ void evalPoint(unsigned int* whichIndex, unsigned int
 
 
 
-__device__ void evaluateCell(unsigned int* whichIndex, unsigned int *N, unsigned int* allNCells, unsigned int* indexes, struct gridCellLookup * allGridCellLookupArr, unsigned int* allNNonEmptyCells, unsigned int * DBSIZE, DTYPE* database, DTYPE* epsilon, struct grid * allIndex, unsigned int * allIndexLookupArr, DTYPE* point, unsigned int* cnt,int* pointIDKey, int* pointInDistVal, int pointIdx, bool differentCell, unsigned int* nDCellIDs, CTYPE* workCounts) {
+__device__ void evaluateCell(const unsigned int whichIndex, unsigned int *N, unsigned int* allNCells, unsigned int* indexes, struct gridCellLookup * allGridCellLookupArr, unsigned int* allNNonEmptyCells, const unsigned int DBSIZE, DTYPE* database, const DTYPE epsilon, struct grid * allIndex, unsigned int * allIndexLookupArr, DTYPE* point, unsigned int* cnt,int* pointIDKey, int* pointInDistVal, int pointIdx, bool differentCell, unsigned int* nDCellIDs, CTYPE* workCounts) {
 
 
 #if COUNTMETRICS == 1
@@ -350,8 +353,8 @@ __device__ void evaluateCell(unsigned int* whichIndex, unsigned int *N, unsigned
 #endif
 
 	unsigned int nCells[NUMINDEXEDDIM];
-	for (int i=0; i<NUMINDEXEDDIM; i++){
-		nCells[i] = allNCells[i+((*whichIndex)*NUMINDEXEDDIM)];
+	for (unsigned int i=0; i<NUMINDEXEDDIM; i++){
+		nCells[i] = allNCells[i+((whichIndex)*NUMINDEXEDDIM)];
 	}
 
 	uint64_t calcLinearID=getLinearID_nDimensionsGPU(indexes, nCells, NUMINDEXEDDIM);
@@ -365,16 +368,16 @@ __device__ void evaluateCell(unsigned int* whichIndex, unsigned int *N, unsigned
 	// increment startGridPtr to begining of grid for index
 	gridCellLookup * startGridPtr = allGridCellLookupArr;
 	grid * startIndexPtr = allIndex;
-	for(int i = 0; i<(*whichIndex); i++)
+	for(int i = 0; i<(whichIndex); i++)
 	{
 		startGridPtr += allNNonEmptyCells[i];
 		startIndexPtr += allNNonEmptyCells[i];
 	}
 
-	if (thrust::binary_search(thrust::seq, startGridPtr, startGridPtr+(allNNonEmptyCells[(*whichIndex)]), gridCellLookup(tmp))){
+	if (thrust::binary_search(thrust::seq, startGridPtr, startGridPtr+(allNNonEmptyCells[(whichIndex)]), gridCellLookup(tmp))){
 
         //compute the neighbors for the adjacent non-empty cell
-        struct gridCellLookup * resultBinSearch=thrust::lower_bound(thrust::seq, startGridPtr, startGridPtr+(allNNonEmptyCells[(*whichIndex)]), gridCellLookup(tmp));
+        struct gridCellLookup * resultBinSearch=thrust::lower_bound(thrust::seq, startGridPtr, startGridPtr+(allNNonEmptyCells[(whichIndex)]), gridCellLookup(tmp));
         unsigned int GridIndex=resultBinSearch->idx;
 #if SORT==1
 	int sortedDim;
@@ -499,7 +502,7 @@ return;
 
 //for descriptions of the parameters, see regular kernel that computes the result (not the batch estimator)
 __global__ void kernelNDGridIndexBatchEstimator(unsigned int *debug1, unsigned int *debug2, unsigned int *N,  
-	unsigned int * sampleOffset, unsigned int * DBSIZE, DTYPE* database, DTYPE* epsilon, unsigned int * whichIndexPoints, struct grid * allIndex, unsigned int * allIndexLookupArr, 
+	unsigned int * sampleOffset, const unsigned int DBSIZE, DTYPE* database, const DTYPE epsilon, unsigned int * whichIndexPoints, struct grid * allIndex, unsigned int * allIndexLookupArr, 
 	struct gridCellLookup * allGridCellLookupArr, DTYPE* allMinArr, unsigned int * allNCells, unsigned int * cnt, 
 	unsigned int * allNNonEmptyCells, unsigned int * orderedQueryPntIDs)
 {
@@ -540,7 +543,7 @@ unsigned int nDCellIDs[NUMINDEXEDDIM];
 unsigned int nDMinCellIDs[NUMINDEXEDDIM];
 unsigned int nDMaxCellIDs[NUMINDEXEDDIM];
 for (int i=0; i<NUMINDEXEDDIM; i++){
-	nDCellIDs[i]=(point[i]-allMinArr[i + (whichIndex * NUMINDEXEDDIM)])/(*epsilon);
+	nDCellIDs[i]=(point[i]-allMinArr[i + (whichIndex * NUMINDEXEDDIM)])/(epsilon);
 	nDMinCellIDs[i]=max(0,nDCellIDs[i]-1); //boundary conditions (don't go beyond cell 0)
 	nDMaxCellIDs[i]=min(allNCells[i + (whichIndex * NUMINDEXEDDIM)]-1,nDCellIDs[i]+1); //boundary conditions (don't go beyond the maximum number of cells)
 
@@ -593,7 +596,7 @@ for (int i=0; i<NUMINDEXEDDIM; i++){
 
 		for (int k=(startIndexPtr+GridIndex)->indexmin; k<=(startIndexPtr+GridIndex)->indexmax; k++){
 				DTYPE runningTotalDist=0;
-				unsigned int dataIdx=allIndexLookupArr[k+(whichIndex*(*DBSIZE))];
+				unsigned int dataIdx=allIndexLookupArr[k+(whichIndex*(DBSIZE))];
 
 				
 
@@ -602,7 +605,7 @@ for (int i=0; i<NUMINDEXEDDIM; i++){
 				}
 
 
-				if (sqrt(runningTotalDist)<=(*epsilon)){
+				if (sqrt(runningTotalDist)<=(epsilon)){
 					//Count number within epsilon
 					unsigned int idx=atomicAdd(cnt,int(1));
 				}
