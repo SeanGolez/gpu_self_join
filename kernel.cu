@@ -373,11 +373,12 @@ __device__ void evaluateCell(const unsigned int whichIndex, unsigned int *N, uns
 		startGridPtr += allNNonEmptyCells[i];
 		startIndexPtr += allNNonEmptyCells[i];
 	}
+	gridCellLookup * endGridPtr = startGridPtr+(allNNonEmptyCells[(whichIndex)])
 
-	if (thrust::binary_search(thrust::seq, startGridPtr, startGridPtr+(allNNonEmptyCells[(whichIndex)]), gridCellLookup(tmp))){
+	if (thrust::binary_search(thrust::seq, startGridPtr, endGridPtr, gridCellLookup(tmp))){
 
         //compute the neighbors for the adjacent non-empty cell
-        struct gridCellLookup * resultBinSearch=thrust::lower_bound(thrust::seq, startGridPtr, startGridPtr+(allNNonEmptyCells[(whichIndex)]), gridCellLookup(tmp));
+        struct gridCellLookup * resultBinSearch=thrust::lower_bound(thrust::seq, startGridPtr, endGridPtr, gridCellLookup(tmp));
         unsigned int GridIndex=resultBinSearch->idx;
 #if SORT==1
 	int sortedDim;
@@ -450,7 +451,8 @@ __device__ void evaluateCell(const unsigned int whichIndex, unsigned int *N, uns
 
 // Brute force method if SORTED != 1
 #else
-	for (int k=(startIndexPtr+GridIndex)->indexmin; k<=(startIndexPtr+GridIndex)->indexmax; k++){
+	int indexPosition = startIndexPtr+GridIndex
+	for (int k=(indexPosition)->indexmin; k<=(indexPosition)->indexmax; k++){
 		evalPoint(whichIndex, N, allIndexLookupArr, k, DBSIZE, database, epsilon, point, cnt, pointIDKey, pointInDistVal, pointIdx, differentCell);
 #if COUNTMETRICS == 1
 			atomicAdd(&workCounts[0],1);
