@@ -40,6 +40,18 @@ struct workArrayPnt{
 
 };
 
+struct indexArrayPnt{
+		unsigned int pntIdx;
+		unsigned int whichIndex;
+		unsigned int numDistCalcs;
+};
+
+struct indexArrayPntGroups{
+		unsigned int index;
+		unsigned int indexmin;
+		unsigned int indexmax;
+};
+
 struct dim_reorder_sort
 {
 		unsigned int dim; //point dimension
