@@ -373,7 +373,7 @@ __device__ void evaluateCell(const unsigned int whichIndex, unsigned int *N, uns
 		startGridPtr += allNNonEmptyCells[i];
 		startIndexPtr += allNNonEmptyCells[i];
 	}
-	gridCellLookup * endGridPtr = startGridPtr+(allNNonEmptyCells[(whichIndex)])
+	gridCellLookup * endGridPtr = startGridPtr+(allNNonEmptyCells[(whichIndex)]);
 
 	if (thrust::binary_search(thrust::seq, startGridPtr, endGridPtr, gridCellLookup(tmp))){
 
@@ -451,7 +451,7 @@ __device__ void evaluateCell(const unsigned int whichIndex, unsigned int *N, uns
 
 // Brute force method if SORTED != 1
 #else
-	int indexPosition = startIndexPtr+GridIndex
+	grid * indexPosition = startIndexPtr+GridIndex;
 	for (int k=(indexPosition)->indexmin; k<=(indexPosition)->indexmax; k++){
 		evalPoint(whichIndex, N, allIndexLookupArr, k, DBSIZE, database, epsilon, point, cnt, pointIDKey, pointInDistVal, pointIdx, differentCell);
 #if COUNTMETRICS == 1

@@ -802,8 +802,8 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 		//FOR LOOP OVER THE NUMBER OF BATCHES STARTS HERE
 		//i=0...numBatches
 		#pragma omp parallel for schedule(static,1) reduction(+:totalResultsLoop) num_threads(GPUSTREAMS)
-		for (int i=0; i<numBatches; i++)
-		// for (int i=0; i<1; i++)
+		// for (int i=0; i<numBatches; i++)
+		for (int i=0; i<1; i++)
 		{	
 			
 

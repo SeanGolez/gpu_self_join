@@ -310,17 +310,12 @@ int main(int argc, char *argv[])
 	std::copy(allIndexVec.begin(), allIndexVec.end(), allIndex);
 	std::copy(allGridCellLookupArrVec.begin(), allGridCellLookupArrVec.end(), allGridCellLookupArr);
 
-	// get which index to use for each point
+	// get which grid offeset index to use for each point index
 	unsigned int *whichIndexPoints = new unsigned int[NDdataPoints.size()];
-	
-	#if QUERYREORDER==0
-	unsigned int * orderedQueryPntIDs=NULL;
-	#endif
-	#if QUERYREORDER==1
-	// create array for arranging points by work
-	std::vector<workArrayPnt> totalPointsWork;
-	unsigned int * orderedQueryPntIDs=new unsigned int[NDdataPoints.size()];
-	#endif
+
+	// create array to sort points by index
+	std::vector<indexArrayPnt> indexPoints;
+	unsigned int * orderedIndexPntIDs=new unsigned int[NDdataPoints.size()];
 
 	// loop through each point idx
 	for (int i = 0; i < NDdataPoints.size(); i++)
@@ -338,26 +333,76 @@ int main(int argc, char *argv[])
 		}
 
 		whichIndexPoints[i] = whichIdx;
-
-		#if QUERYREORDER==1
-		// add work data for this point to total work
-		workArrayPnt tmp;
+		
+		// add index data for this point
+		indexArrayPnt tmp;
 		tmp.pntIdx = i;
+		tmp.whichIndex = whichIdx;
 		tmp.numDistCalcs = leastDistCalcs;
-		totalPointsWork.push_back(tmp);
-		#endif
+		indexPoints.push_back(tmp);
 	}
+
+	// sort by which index
+	std::sort(indexPoints.begin(), indexPoints.end(), [](const indexArrayPnt& a, const indexArrayPnt& b) {
+		return a.whichIndex < b.whichIndex;
+	});
+
+	// split into groups of each index
+	std::vector<indexArrayPntGroups> indexGroups;
+	// start count at first index
+	unsigned int cnt = indexPoints.begin()->whichIndex;
+	// initialize first element in array
+	indexArrayPntGroups tmp;
+	tmp.index = cnt;
+	tmp.indexmin = 0;
+	indexGroups.push_back(tmp);
+	for(int i=1; i<indexPoints.size(); i++) {
+		if( indexPoints[i].whichIndex != indexPoints[i-1].whichIndex) {
+			indexGroups[cnt].indexmax = i;
+			cnt++;
+			tmp.index = cnt;
+			tmp.indexmin = i;
+			indexGroups.push_back(tmp);
+		}
+	}
+	indexGroups[cnt].indexmax = indexPoints.size();
+
+	/*
+	for(int i=0; i<NUMRANDINDEXES; i++) {
+        int count = std::count_if(indexPoints.begin(), indexPoints.end(), [&i](const indexArrayPnt& p) {
+            return p.whichIndex == i; // Compare whichIndex with i
+        });
+        
+        // Print the result
+        printf("%d: %d\n", i, count);
+	}
+	
+	for(auto elem:indexGroups) {
+		printf("%d: %d, %d\n", elem.index, elem.indexmin, elem.indexmax);
+	}
+	*/
 
 	#if QUERYREORDER==1
-	// sort total work
-	std::sort(totalPointsWork.begin(), totalPointsWork.end(), compareWorkArrayByNumDistanceCalcs);
-
-	// populate query reorder
-	for (unsigned int i=0; i<totalPointsWork.size(); i++)
-	{
-		orderedQueryPntIDs[i]=totalPointsWork[i].pntIdx;
-	}
+	// sort each group by work
+	// create array for arranging points by work
+		for( int i=0; i<indexGroups.size(); i++) {
+			std::sort(indexPoints.begin()+indexGroups[i].indexmin, indexPoints.begin()+indexGroups[i].indexmax, [](const indexArrayPnt& a, const indexArrayPnt& b) {
+				return a.numDistCalcs > b.numDistCalcs;
+				});
+		}
 	#endif
+
+	/*
+	for(auto elem:indexPoints) {
+		printf("%d: %d, %d\n", elem.pntIdx, elem.whichIndex, elem.numDistCalcs);
+	}
+	*/
+
+	for( int i=0; i<indexPoints.size(); i++ ) {
+		orderedIndexPntIDs[i] = indexPoints[i].pntIdx;
+	}
+
+	return 0;
 
 	// output size of each array in byes
 	unsigned int totalNNonemptyCells = 0;
@@ -385,7 +430,7 @@ int main(int argc, char *argv[])
 
 	double tstart = omp_get_wtime();
 
-	distanceTableNDGridBatches(&NDdataPoints, epsilon, whichIndexPoints, allIndex, allGridCellLookupArr, allNNonEmptyCells, allMinArr, allNCells, allIndexLookupArr, neighborTable, &pointersToNeighbors, &totalNeighbors, workCounts, orderedQueryPntIDs);
+	// distanceTableNDGridBatches(&NDdataPoints, epsilon, whichIndexPoints, allIndex, allGridCellLookupArr, allNNonEmptyCells, allMinArr, allNCells, allIndexLookupArr, neighborTable, &pointersToNeighbors, &totalNeighbors, workCounts, orderedQueryPntIDs);
 
 	double tend = omp_get_wtime();
 
@@ -419,6 +464,7 @@ int main(int argc, char *argv[])
 	delete[] allIndex;
 	delete[] allGridCellLookupArr;
 	delete[] whichIndexPoints;
+	delete[] orderedIndexPntIDs;
 }
 #endif // end #if not Python (standard C version)
 
