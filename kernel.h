@@ -12,8 +12,8 @@ __global__ void kernelNDGridIndexGlobal(unsigned int *debug1, unsigned int *debu
 	struct gridCellLookup * allGridCellLookupArr, DTYPE* allMinArr, unsigned int * allNCells, unsigned int * cnt, 
 	unsigned int * allNNonEmptyCells, int * pointIDKey, int * pointInDistVal, unsigned int * orderedQueryPntIDs, CTYPE* workCounts);
 
-__global__ void kernelNDGridIndexBatchEstimator(unsigned int *debug1, unsigned int *debug2, unsigned int *N,  
-	unsigned int * sampleOffset, const unsigned int DBSIZE, DTYPE* database, const DTYPE epsilon, struct grid * allIndex, unsigned int * allIndexLookupArr, 
+__global__ void kernelNDGridIndexBatchEstimator(unsigned int *debug1, unsigned int *debug2, const unsigned int N,  
+	unsigned int * sampleOffset, DTYPE* database, const DTYPE epsilon, struct grid * allIndex, unsigned int * allIndexLookupArr, 
 	struct gridCellLookup * allGridCellLookupArrStart, struct gridCellLookup * allGridCellLookupArrStartEnd, DTYPE* allMinArr, unsigned int * allNCells, 
 	unsigned int * orderedIndexPntIDs, unsigned int * cnt);
 

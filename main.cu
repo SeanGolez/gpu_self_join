@@ -378,6 +378,21 @@ int main(int argc, char *argv[])
 		}
 	#endif
 
+	for(int i=0; i<NUMRANDINDEXES; i++) {
+        int count = std::count_if(indexPoints.begin(), indexPoints.end(), [&i](const indexArrayPnt& p) {
+            return p.whichIndex == i; // Compare whichIndex with i
+        });
+        
+        // Print the result
+        printf("%d: %d\n", i, count);
+	}
+
+	/*
+	for(auto elem:indexGroups) {
+		printf("%d: %d, %d\n", elem.index, elem.indexmin, elem.indexmax);
+	}
+	*/
+
 	// fill ordered index point ids array
 	for( int i=0; i<indexPoints.size(); i++ ) {
 		orderedIndexPntIDs[i] = indexPoints[i].pntIdx;

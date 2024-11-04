@@ -503,8 +503,8 @@ return;
 
 
 //for descriptions of the parameters, see regular kernel that computes the result (not the batch estimator)
-__global__ void kernelNDGridIndexBatchEstimator(unsigned int *debug1, unsigned int *debug2, unsigned int *N,  
-	unsigned int * sampleOffset, const unsigned int DBSIZE, DTYPE* database, const DTYPE epsilon, struct grid * allIndex, unsigned int * allIndexLookupArr, 
+__global__ void kernelNDGridIndexBatchEstimator(unsigned int *debug1, unsigned int *debug2, const unsigned int N,  
+	unsigned int * sampleOffset, DTYPE* database, const DTYPE epsilon, struct grid * allIndex, unsigned int * allIndexLookupArr, 
 	struct gridCellLookup * allGridCellLookupArrStart, struct gridCellLookup * allGridCellLookupArrStartEnd, DTYPE* allMinArr, unsigned int * allNCells, 
 	unsigned int * orderedIndexPntIDs, unsigned int * cnt)
 {
@@ -512,7 +512,7 @@ __global__ void kernelNDGridIndexBatchEstimator(unsigned int *debug1, unsigned i
 unsigned int tid=threadIdx.x+ (blockIdx.x*BLOCKSIZE); 
 
 
-if (tid>=*N){
+if (tid>=N){
 	return;
 }
 
@@ -573,16 +573,14 @@ for (int i=0; i<NUMINDEXEDDIM; i++){
 	// if (tid==0)
 	// 	printf("\ndim: %d, indexes: %d",x, indexes[x]);
 	}
-	
-	unsigned int nCells[NUMINDEXEDDIM];
-	for (int i=0; i<NUMINDEXEDDIM; i++){
-		nCells[i] = allNCells[i];
-	}
 
-	uint64_t calcLinearID=getLinearID_nDimensionsGPU(indexes, nCells, NUMINDEXEDDIM);
 
+
+	uint64_t calcLinearID=getLinearID_nDimensionsGPU(indexes, allNCells, NUMINDEXEDDIM);
 	//compare the linear ID with the gridCellLookupArr to determine if the cell is non-empty: this can happen because one point says 
 	//a cell in a particular dimension is non-empty, but that's because it was related to a different point (not adjacent to the query point)
+
+	
 
 	struct gridCellLookup tmp;
 	tmp.gridLinearID=calcLinearID;

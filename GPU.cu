@@ -58,7 +58,7 @@ bool compareByPointValue(const key_val_sort &a, const key_val_sort &b)
 unsigned long long callGPUBatchEst(unsigned int DBSIZE, DTYPE* dev_database, DTYPE epsilon, struct grid * dev_grid, 
 	unsigned int * dev_indexLookupArr, struct gridCellLookup * dev_gridCellLookupArr, DTYPE* dev_minArr, 
 	unsigned int * dev_nCells,
-	unsigned int * orderedIndexPntIDs, std::vector<indexArrayPntGroups> * indexGroups, unsigned int* allNNonEmptyCells, unsigned int * retNumBatches, unsigned int * retGPUBufferSize)
+	unsigned int * dev_orderedIndexPntIDs, std::vector<indexArrayPntGroups> * indexGroups, unsigned int* allNNonEmptyCells, unsigned int * retNumBatches, unsigned int * retGPUBufferSize)
 {
 
 
@@ -88,7 +88,7 @@ unsigned long long callGPUBatchEst(unsigned int DBSIZE, DTYPE* dev_database, DTY
 	printf("\nOffset: %d", offsetRate);
 
 
-
+	/*
 	/////////////////
 	//N GPU threads
 	////////////////
@@ -107,6 +107,7 @@ unsigned long long callGPUBatchEst(unsigned int DBSIZE, DTYPE* dev_database, DTY
 	//copy N to device 
 	//N IS THE NUMBER OF THREADS
 	gpuErrchk(cudaMemcpy( dev_N_batchEst, N_batchEst, sizeof(unsigned int), cudaMemcpyHostToDevice));
+	*/
 	
 	/////////////
 	//count the result set size 
@@ -186,21 +187,24 @@ unsigned long long callGPUBatchEst(unsigned int DBSIZE, DTYPE* dev_database, DTY
 
 
 
-	const int TOTALBLOCKSBATCHEST=ceil((1.0*(DBSIZE)*sampleRate)/(1.0*BLOCKSIZE));	
-	printf("\ntotal blocks: %d",TOTALBLOCKSBATCHEST);
+
 
 	unsigned int gridIncrement =  0;
 	for(int i=0; i<indexGroups->size(); i++){
 		// get index
 		unsigned int whichIndex = (*indexGroups)[i].index;
-
+		
 		printf("\nLaunch batch estimator kernel for index offest %d", whichIndex);
 
+		const unsigned int N_batchEst=((*indexGroups)[i].indexmax - (*indexGroups)[i].indexmin)*sampleRate;
+		const int TOTALBLOCKSBATCHEST=ceil(((1.0*(*indexGroups)[i].indexmax - (*indexGroups)[i].indexmin)*sampleRate)/(1.0*BLOCKSIZE));	
+		printf("\ntotal blocks: %d",TOTALBLOCKSBATCHEST);
+
 		// index each array before passing to reduce registers
-		kernelNDGridIndexBatchEstimator<<< TOTALBLOCKSBATCHEST, BLOCKSIZE>>>(dev_debug1, dev_debug2, dev_N_batchEst, 
-			dev_sampleOffset, DBSIZE, dev_database, epsilon, dev_grid+gridIncrement, dev_indexLookupArr+(whichIndex*DBSIZE), 
+		kernelNDGridIndexBatchEstimator<<< TOTALBLOCKSBATCHEST, BLOCKSIZE>>>(dev_debug1, dev_debug2, N_batchEst, 
+			dev_sampleOffset, dev_database, epsilon, dev_grid+gridIncrement, dev_indexLookupArr+(whichIndex*DBSIZE), 
 			dev_gridCellLookupArr+gridIncrement, dev_gridCellLookupArr+allNNonEmptyCells[whichIndex], dev_minArr+(whichIndex * NUMINDEXEDDIM), 
-			dev_nCells+(whichIndex * NUMINDEXEDDIM), orderedIndexPntIDs, dev_cnt_batchEst);
+			dev_nCells+(whichIndex * NUMINDEXEDDIM), dev_orderedIndexPntIDs+((*indexGroups)[i].indexmin), dev_cnt_batchEst);
 			cout<<"\n** ERROR FROM KERNEL LAUNCH OF BATCH ESTIMATOR: "<<cudaGetLastError();
 			// find the size of the number of results
 			errCode=cudaMemcpy( cnt_batchEst, dev_cnt_batchEst, sizeof(unsigned int), cudaMemcpyDeviceToHost);
@@ -269,7 +273,7 @@ unsigned long long callGPUBatchEst(unsigned int DBSIZE, DTYPE* dev_database, DTY
 
 
 	cudaFree(dev_cnt_batchEst);	
-	cudaFree(dev_N_batchEst);
+	// cudaFree(dev_N_batchEst);
 	cudaFree(dev_sampleOffset);
 
 return estimatedTotalSizeWithAlpha;
