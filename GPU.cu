@@ -55,9 +55,10 @@ bool compareByPointValue(const key_val_sort &a, const key_val_sort &b)
 }
 
 
-unsigned long long callGPUBatchEst(unsigned int DBSIZE, DTYPE* dev_database, DTYPE epsilon, unsigned int * dev_whichIndexPoints, struct grid * dev_grid, 
+unsigned long long callGPUBatchEst(unsigned int DBSIZE, DTYPE* dev_database, DTYPE epsilon, struct grid * dev_grid, 
 	unsigned int * dev_indexLookupArr, struct gridCellLookup * dev_gridCellLookupArr, DTYPE* dev_minArr, 
-	unsigned int * dev_nCells, unsigned int * dev_nNonEmptyCells, unsigned int * dev_orderedQueryPntIDs, unsigned int * retNumBatches, unsigned int * retGPUBufferSize)
+	unsigned int * dev_nCells,
+	unsigned int * orderedIndexPntIDs, std::vector<indexArrayPntGroups> * indexGroups, unsigned int* allNNonEmptyCells, unsigned int * retNumBatches, unsigned int * retGPUBufferSize)
 {
 
 
@@ -188,21 +189,31 @@ unsigned long long callGPUBatchEst(unsigned int DBSIZE, DTYPE* dev_database, DTY
 	const int TOTALBLOCKSBATCHEST=ceil((1.0*(DBSIZE)*sampleRate)/(1.0*BLOCKSIZE));	
 	printf("\ntotal blocks: %d",TOTALBLOCKSBATCHEST);
 
-	
+	unsigned int gridIncrement =  0;
+	for(int i=0; i<indexGroups->size(); i++){
+		// get index
+		unsigned int whichIndex = (*indexGroups)[i].index;
 
-	kernelNDGridIndexBatchEstimator<<< TOTALBLOCKSBATCHEST, BLOCKSIZE>>>(dev_debug1, dev_debug2, dev_N_batchEst, 
-		dev_sampleOffset, DBSIZE, dev_database, epsilon, dev_whichIndexPoints, dev_grid, dev_indexLookupArr, 
-		dev_gridCellLookupArr, dev_minArr, dev_nCells, dev_cnt_batchEst, dev_nNonEmptyCells, dev_orderedQueryPntIDs);
-		cout<<"\n** ERROR FROM KERNEL LAUNCH OF BATCH ESTIMATOR: "<<cudaGetLastError();
-		// find the size of the number of results
-		errCode=cudaMemcpy( cnt_batchEst, dev_cnt_batchEst, sizeof(unsigned int), cudaMemcpyDeviceToHost);
-		if(errCode != cudaSuccess) {
-		cout << "\nError: getting cnt for batch estimate from GPU Got error with code " << errCode << endl; 
-		}
-		else
-		{
-			printf("\nGPU: result set size for estimating the number of batches (sampled): %u",*cnt_batchEst);
-		}
+		printf("\nLaunch batch estimator kernel for index offest %d", whichIndex);
+
+		// index each array before passing to reduce registers
+		kernelNDGridIndexBatchEstimator<<< TOTALBLOCKSBATCHEST, BLOCKSIZE>>>(dev_debug1, dev_debug2, dev_N_batchEst, 
+			dev_sampleOffset, DBSIZE, dev_database, epsilon, dev_grid+gridIncrement, dev_indexLookupArr+(whichIndex*DBSIZE), 
+			dev_gridCellLookupArr+gridIncrement, dev_gridCellLookupArr+allNNonEmptyCells[whichIndex], dev_minArr+(whichIndex * NUMINDEXEDDIM), 
+			dev_nCells+(whichIndex * NUMINDEXEDDIM), orderedIndexPntIDs, dev_cnt_batchEst);
+			cout<<"\n** ERROR FROM KERNEL LAUNCH OF BATCH ESTIMATOR: "<<cudaGetLastError();
+			// find the size of the number of results
+			errCode=cudaMemcpy( cnt_batchEst, dev_cnt_batchEst, sizeof(unsigned int), cudaMemcpyDeviceToHost);
+			if(errCode != cudaSuccess) {
+			cout << "\nError: getting cnt for batch estimate from GPU Got error with code " << errCode << endl; 
+			}
+			else
+			{
+				printf("\nGPU: result set size for estimating the number of batches (sampled): %u",*cnt_batchEst);
+			}
+		
+		gridIncrement += allNNonEmptyCells[whichIndex];
+	}
 
 
 	#if COUNTMETRICS==1	
@@ -212,7 +223,6 @@ unsigned long long callGPUBatchEst(unsigned int DBSIZE, DTYPE* dev_database, DTY
 
 	uint64_t estimatedNeighbors=(uint64_t)*cnt_batchEst*(uint64_t)offsetRate;	
 	printf("\nFrom gpu cnt: %d, offset rate: %d", *cnt_batchEst,offsetRate);
-	
 	
 	unsigned int GPUBufferSize=GPUBUFFERSIZE;
 
@@ -266,10 +276,10 @@ return estimatedTotalSizeWithAlpha;
 
 }
 
-void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints, const DTYPE epsilon, unsigned int * whichIndexPoints, struct grid * allIndex, 
+void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints, const DTYPE epsilon, struct grid * allIndex, 
 	struct gridCellLookup * allGridCellLookupArr, unsigned int * allNNonEmptyCells, DTYPE* allMinArr, unsigned int * allNCells, 
 	unsigned int * allIndexLookupArr, struct neighborTableLookup * neighborTable, std::vector<struct neighborDataPtrs> * pointersToNeighbors, 
-	uint64_t * totalNeighbors, CTYPE* workCounts, unsigned int * orderedQueryPntIDs)
+	uint64_t * totalNeighbors, CTYPE* workCounts, unsigned int * orderedIndexPntIDs, std::vector<indexArrayPntGroups> * indexGroups)
 {
 	// create total num empty cells for all indexes variable
 	unsigned int totalNNonemptyCells = 0;
@@ -288,19 +298,27 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 	cudaError_t errCode;
 
 	unsigned int * dev_orderedQueryPntIDs=NULL;
+	unsigned int * dev_whichIndexPoints=NULL;
 
+	/*
 	//Reordering the query points based on work
 	#if QUERYREORDER==1
-	/*
 	// note: commented this out because orderQueryPntIDs created before function call
 	unsigned int * orderedQueryPntIDs=new unsigned int[NDdataPoints->size()];
 	computeWorkDifficulty(orderedQueryPntIDs, gridCellLookupArr, nNonEmptyCells, indexLookupArr, index);
-	*/
 	//allocate memory on device:
 	gpuErrchk(cudaMalloc( (void**)&dev_orderedQueryPntIDs, sizeof(unsigned int)*NDdataPoints->size()));
 	gpuErrchk(cudaMemcpy(dev_orderedQueryPntIDs, orderedQueryPntIDs, sizeof(unsigned int)*NDdataPoints->size(), cudaMemcpyHostToDevice));
 
-	#endif	
+	#endif
+	*/
+
+	unsigned int * dev_orderedIndexPntIDs=NULL;
+	gpuErrchk(cudaMalloc( (void**)&dev_orderedIndexPntIDs, sizeof(unsigned int)*NDdataPoints->size()));
+	gpuErrchk(cudaMemcpy(dev_orderedIndexPntIDs, orderedIndexPntIDs, sizeof(unsigned int)*NDdataPoints->size(), cudaMemcpyHostToDevice));
+
+
+
 
 	///////////////////////////////////
 	//COPY THE DATABASE TO THE GPU
@@ -528,7 +546,7 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 	//NUMBER OF NON-EMPTY CELLS
 	///////////////////////////////////
 
-
+	/*
 	///////////////////////////////////
 	//WHICH INDEX TO USE FOR EACH POINT
 	///////////////////////////////////
@@ -542,6 +560,7 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 	///////////////////////////////////
 	//WHICH INDEX TO USE FOR EACH POINT
 	///////////////////////////////////
+	*/
 
 	
 
@@ -624,10 +643,12 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 	unsigned int GPUBufferSize=0;
 
 	double tstartbatchest=omp_get_wtime();
-	estimatedNeighbors=callGPUBatchEst(DBSIZE, dev_database, epsilon, dev_whichIndexPoints, dev_allGrids, dev_allIndexLookupArr, dev_allGridCellLookupArr, dev_allMinArr, dev_allNCells, dev_allNNonEmptyCells, dev_orderedQueryPntIDs, &numBatches, &GPUBufferSize);	
+	estimatedNeighbors=callGPUBatchEst(DBSIZE, dev_database, epsilon, dev_allGrids, dev_allIndexLookupArr, dev_allGridCellLookupArr, dev_allMinArr, dev_allNCells, dev_orderedIndexPntIDs, indexGroups, allNNonEmptyCells, &numBatches, &GPUBufferSize);	
 	double tendbatchest=omp_get_wtime();
 	printf("\nTime to estimate batches: %f",tendbatchest - tstartbatchest);
 	printf("\nIn Calling fn: Estimated neighbors: %llu, num. batches: %d, GPU Buffer size: %d",estimatedNeighbors, numBatches,GPUBufferSize);
+
+	return;
 
 	//initialize new neighbortable. resize to the number of batches	
 	//Only use this if using unicomp

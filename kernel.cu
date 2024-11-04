@@ -504,9 +504,9 @@ return;
 
 //for descriptions of the parameters, see regular kernel that computes the result (not the batch estimator)
 __global__ void kernelNDGridIndexBatchEstimator(unsigned int *debug1, unsigned int *debug2, unsigned int *N,  
-	unsigned int * sampleOffset, const unsigned int DBSIZE, DTYPE* database, const DTYPE epsilon, unsigned int * whichIndexPoints, struct grid * allIndex, unsigned int * allIndexLookupArr, 
-	struct gridCellLookup * allGridCellLookupArr, DTYPE* allMinArr, unsigned int * allNCells, unsigned int * cnt, 
-	unsigned int * allNNonEmptyCells, unsigned int * orderedQueryPntIDs)
+	unsigned int * sampleOffset, const unsigned int DBSIZE, DTYPE* database, const DTYPE epsilon, struct grid * allIndex, unsigned int * allIndexLookupArr, 
+	struct gridCellLookup * allGridCellLookupArrStart, struct gridCellLookup * allGridCellLookupArrStartEnd, DTYPE* allMinArr, unsigned int * allNCells, 
+	unsigned int * orderedIndexPntIDs, unsigned int * cnt)
 {
 
 unsigned int tid=threadIdx.x+ (blockIdx.x*BLOCKSIZE); 
@@ -516,7 +516,7 @@ if (tid>=*N){
 	return;
 }
 
-
+/*
 //If reordering the queries by the amount of work
 #if QUERYREORDER==1
 //the point id in the dataset
@@ -530,6 +530,12 @@ unsigned int pointID=(GPUNUMDIM)*pointIdx;
 unsigned int pointIdx = tid*(*sampleOffset);
 unsigned int pointID=pointIdx*(GPUNUMDIM);
 #endif
+*/
+
+//the point id in the dataset
+unsigned int pointIdx=orderedIndexPntIDs[tid*(*sampleOffset)]; 
+//The offset into the database, taking into consideration the length of each dimension
+unsigned int pointID=(GPUNUMDIM)*pointIdx;
 
 //make a local copy of the point
 DTYPE point[GPUNUMDIM];
@@ -537,17 +543,15 @@ for (int i=0; i<GPUNUMDIM; i++){
 	point[i]=database[pointID+i];	
 }
 
-unsigned int whichIndex = whichIndexPoints[pointIdx];
-
 //calculate the coords of the Cell for the point
 //and the min/max ranges in each dimension
 unsigned int nDCellIDs[NUMINDEXEDDIM];
 unsigned int nDMinCellIDs[NUMINDEXEDDIM];
 unsigned int nDMaxCellIDs[NUMINDEXEDDIM];
 for (int i=0; i<NUMINDEXEDDIM; i++){
-	nDCellIDs[i]=(point[i]-allMinArr[i + (whichIndex * NUMINDEXEDDIM)])/(epsilon);
+	nDCellIDs[i]=(point[i]-allMinArr[i])/(epsilon);
 	nDMinCellIDs[i]=max(0,nDCellIDs[i]-1); //boundary conditions (don't go beyond cell 0)
-	nDMaxCellIDs[i]=min(allNCells[i + (whichIndex * NUMINDEXEDDIM)]-1,nDCellIDs[i]+1); //boundary conditions (don't go beyond the maximum number of cells)
+	nDMaxCellIDs[i]=min(allNCells[i]-1,nDCellIDs[i]+1); //boundary conditions (don't go beyond the maximum number of cells)
 
 }
 
@@ -572,7 +576,7 @@ for (int i=0; i<NUMINDEXEDDIM; i++){
 	
 	unsigned int nCells[NUMINDEXEDDIM];
 	for (int i=0; i<NUMINDEXEDDIM; i++){
-		nCells[i] = allNCells[i+(whichIndex*NUMINDEXEDDIM)];
+		nCells[i] = allNCells[i];
 	}
 
 	uint64_t calcLinearID=getLinearID_nDimensionsGPU(indexes, nCells, NUMINDEXEDDIM);
@@ -583,22 +587,13 @@ for (int i=0; i<NUMINDEXEDDIM; i++){
 	struct gridCellLookup tmp;
 	tmp.gridLinearID=calcLinearID;
 
-	// increment startGridPtr to begining of grid for index
-	gridCellLookup * startGridPtr = allGridCellLookupArr;
-	grid * startIndexPtr = allIndex;
-	for(int i = 0; i<whichIndex; i++)
-	{
-		startGridPtr += allNNonEmptyCells[i];
-		startIndexPtr += allNNonEmptyCells[i];
-	}
-	
-	if (thrust::binary_search(thrust::seq, startGridPtr, startGridPtr+(allNNonEmptyCells[whichIndex]), gridCellLookup(tmp))){	
-		struct gridCellLookup * resultBinSearch=thrust::lower_bound(thrust::seq, startGridPtr, startGridPtr+(allNNonEmptyCells[whichIndex]), gridCellLookup(tmp));
+	if (thrust::binary_search(thrust::seq, allGridCellLookupArrStart, allGridCellLookupArrStartEnd, gridCellLookup(tmp))){	
+		struct gridCellLookup * resultBinSearch=thrust::lower_bound(thrust::seq, allGridCellLookupArrStart, allGridCellLookupArrStartEnd, gridCellLookup(tmp));
 		unsigned int GridIndex=resultBinSearch->idx;
 
-		for (int k=(startIndexPtr+GridIndex)->indexmin; k<=(startIndexPtr+GridIndex)->indexmax; k++){
+		for (int k=allIndex[GridIndex].indexmin; k<=allIndex[GridIndex].indexmin; k++){
 				DTYPE runningTotalDist=0;
-				unsigned int dataIdx=allIndexLookupArr[k+(whichIndex*(DBSIZE))];
+				unsigned int dataIdx=allIndexLookupArr[k];
 
 				
 
