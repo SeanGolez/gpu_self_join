@@ -23,7 +23,7 @@
 #define NUMINDEXEDDIM 3
 
 //Number of random indexes to generate (at least 1)
-#define NUMRANDINDEXES 10
+#define NUMRANDINDEXES 3
 
 //data type of the input dataset (float or double)
 // cmp3101 should use float!
