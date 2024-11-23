@@ -75,6 +75,11 @@ bool compareWorkArrayByNumDistanceCalcs(const workArrayPnt &a, const workArrayPn
 	return a.numDistCalcs > b.numDistCalcs;
 }
 
+// sort index point array by work descending
+bool compareIndexArrayByNumDistanceCalcs(const indexArrayPnt& a, const indexArrayPnt& b) {
+	return a.numDistCalcs > b.numDistCalcs;
+	}
+
 #ifndef PYTHON // standard C version
 int main(int argc, char *argv[])
 {
@@ -317,6 +322,15 @@ int main(int argc, char *argv[])
 	std::vector<indexArrayPnt> indexPoints;
 	unsigned int * orderedIndexPntIDs=new unsigned int[NDdataPoints.size()];
 
+	#if QUERYREORDER==0
+	unsigned int * orderedQueryPntIDs=NULL;
+	#endif
+	#if QUERYREORDER==1
+	// create array for arranging points by work (used for batch estimator)
+	std::vector<indexArrayPnt> totalPointsWork;
+	unsigned int * orderedQueryPntIDs=new unsigned int[NDdataPoints.size()];
+	#endif
+
 	// loop through each point idx
 	for (int i = 0; i < NDdataPoints.size(); i++)
 	{
@@ -340,6 +354,10 @@ int main(int argc, char *argv[])
 		tmp.whichIndex = whichIdx;
 		tmp.numDistCalcs = leastDistCalcs;
 		indexPoints.push_back(tmp);
+		
+		#if QUERYREORDER==1
+		totalPointsWork.push_back(tmp);
+		#endif
 	}
 
 	// sort by which index
@@ -348,33 +366,40 @@ int main(int argc, char *argv[])
 	});
 
 
-		// split into groups of each index
-		std::vector<indexArrayPntGroups> indexGroups;
-		// start count at first index
-		unsigned int cnt = indexPoints.begin()->whichIndex;
-		// initialize first element in array
-		indexArrayPntGroups tmp;
-		tmp.index = cnt;
-		tmp.indexmin = 0;
-		indexGroups.push_back(tmp);
-		for(int i=1; i<indexPoints.size(); i++) {
-			if( indexPoints[i].whichIndex != indexPoints[i-1].whichIndex) {
-				indexGroups[cnt].indexmax = i;
-				cnt++;
-				tmp.index = cnt;
-				tmp.indexmin = i;
-				indexGroups.push_back(tmp);
-			}
+	// split into groups of each index
+	std::vector<indexArrayPntGroups> indexGroups;
+	// start count at first index
+	unsigned int cnt = indexPoints.begin()->whichIndex;
+	// initialize first element in array
+	indexArrayPntGroups tmp;
+	tmp.index = cnt;
+	tmp.indexmin = 0;
+	indexGroups.push_back(tmp);
+	for(int i=1; i<indexPoints.size(); i++) {
+		if( indexPoints[i].whichIndex != indexPoints[i-1].whichIndex) {
+			indexGroups[cnt].indexmax = i;
+			cnt++;
+			tmp.index = cnt;
+			tmp.indexmin = i;
+			indexGroups.push_back(tmp);
 		}
-		indexGroups[cnt].indexmax = indexPoints.size();
+	}
+	indexGroups[cnt].indexmax = indexPoints.size();
 
 	#if QUERYREORDER==1
 		// sort each group by work
 		// create array for arranging points by work
 		for( int i=0; i<indexGroups.size(); i++) {
-			std::sort(indexPoints.begin()+indexGroups[i].indexmin, indexPoints.begin()+indexGroups[i].indexmax, [](const indexArrayPnt& a, const indexArrayPnt& b) {
-				return a.numDistCalcs > b.numDistCalcs;
-				});
+			std::sort(indexPoints.begin()+indexGroups[i].indexmin, indexPoints.begin()+indexGroups[i].indexmax, compareIndexArrayByNumDistanceCalcs);
+		}
+
+		// sort total work
+		std::sort(totalPointsWork.begin(), totalPointsWork.end(), compareIndexArrayByNumDistanceCalcs);
+
+		// populate query reorder
+		for (unsigned int i=0; i<totalPointsWork.size(); i++)
+		{
+			orderedQueryPntIDs[i]=totalPointsWork[i].pntIdx;
 		}
 	#endif
 
@@ -425,7 +450,7 @@ int main(int argc, char *argv[])
 
 	double tstart = omp_get_wtime();
 
-	distanceTableNDGridBatches(&NDdataPoints, &epsilon, allIndex, allGridCellLookupArr, allNNonEmptyCells, allMinArr, allNCells, allIndexLookupArr, neighborTable, &pointersToNeighbors, &totalNeighbors, workCounts, orderedIndexPntIDs, &indexGroups);
+	distanceTableNDGridBatches(&NDdataPoints, &epsilon, allIndex, allGridCellLookupArr, allNNonEmptyCells, allMinArr, allNCells, allIndexLookupArr, neighborTable, &pointersToNeighbors, &totalNeighbors, workCounts, orderedIndexPntIDs, &indexGroups, orderedQueryPntIDs);
 
 	double tend = omp_get_wtime();
 

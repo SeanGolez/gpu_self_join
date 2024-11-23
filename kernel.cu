@@ -335,17 +335,13 @@ __forceinline__ __device__ void evalPoint(unsigned int *N, unsigned int* allInde
         #endif	
 
 		unsigned int idx=atomicAdd(cnt,int(1));
-		/*
 		pointIDKey[idx]=pointIdx;
 		pointInDistVal[idx]=dataIdx;
-		*/
 		  
             if(differentCell) {
               unsigned int idx = atomicAdd(cnt,int(1));
-              /*
 			  pointIDKey[idx]=pointIdx;
               pointInDistVal[idx]=dataIdx;
-			  */
            }
 	}
 }
@@ -500,7 +496,8 @@ return;
 //for descriptions of the parameters, see regular kernel that computes the result (not the batch estimator)
 __global__ void kernelNDGridIndexBatchEstimator(unsigned int *debug1, unsigned int *debug2, unsigned int *N,  
 	unsigned int * sampleOffset, DTYPE* database, DTYPE* epsilon, struct grid * index, unsigned int * indexLookupArr, 
-	struct gridCellLookup * gridCellLookupArrStart, struct gridCellLookup * gridCellLookupArrEnd,DTYPE* minArr, unsigned int * nCells, unsigned int * cnt)
+	struct gridCellLookup * gridCellLookupArrStart, struct gridCellLookup * gridCellLookupArrEnd,DTYPE* minArr, unsigned int * nCells, unsigned int * cnt,
+	unsigned int * orderedQueryPntIDs)
 {
 
 unsigned int tid=threadIdx.x+ (blockIdx.x*BLOCKSIZE); 
@@ -509,7 +506,16 @@ if (tid>=*N){
 	return;
 }
 
-unsigned int pointID=tid*(*sampleOffset)*(GPUNUMDIM);
+#if QUERYREORDER==1
+//the point id in the dataset
+unsigned int pointIdx=orderedQueryPntIDs[tid]; 
+//The offset into the database, taking into consideration the length of each dimension
+unsigned int pointID=(GPUNUMDIM)*pointIdx; 
+#endif
+
+#if QUERYREORDER==0
+unsigned int pointID=tid*(GPUNUMDIM);
+#endif
 
 //make a local copy of the point
 DTYPE point[GPUNUMDIM];

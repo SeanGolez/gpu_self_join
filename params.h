@@ -61,7 +61,7 @@
 #define REORDER 1
 
 //For ILP in distance calculations
-#define ILP 0 //0-default no ILP
+#define ILP 8 //0-default no ILP
 			  //The number is the number of registers/cached elements
 
 
@@ -92,6 +92,7 @@
 
 //Result set buffer size, one buffer of this size per GPU stream
 #define GPUBUFFERSIZE 100000000 //Default 100000000
+// NOTE: tune parameters (maybe increase to 400000000)
 
 //number of concurrent gpu streams
 #define GPUSTREAMS 3 //Default 3
