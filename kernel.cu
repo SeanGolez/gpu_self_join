@@ -163,7 +163,7 @@ __global__ void kernelUniqueKeys(int * pointIDKey, unsigned int * N, int * uniqu
 // int * pointIDKey, int * pointInDistVal - result set to be sorted as key/value pairs
 
 __global__ void kernelNDGridIndexGlobal(unsigned int *debug1, unsigned int *debug2, unsigned int *N,  
-	unsigned int * offset, DTYPE* database, DTYPE * epsilon, struct grid * allIndex, unsigned int * allIndexLookupArr, 
+	unsigned int * offset, unsigned int * indexGroupOffset, DTYPE* database, DTYPE * epsilon, struct grid * allIndex, unsigned int * allIndexLookupArr, 
 	struct gridCellLookup * allGridCellLookupArrStart, struct gridCellLookup * allGridCellLookupArrStartEnd, DTYPE* allMinArr, unsigned int * allNCells, 
 	unsigned int * orderedIndexPntIDs, unsigned int * cnt, int * pointIDKey, int * pointInDistVal, CTYPE* workCounts)
 {
@@ -199,7 +199,7 @@ unsigned int pointOffset=(GPUNUMDIM)*pointIdx;
 */
 
 //the point id in the dataset
-unsigned int pointIdx=orderedIndexPntIDs[tid+(*offset)]; 
+unsigned int pointIdx=orderedIndexPntIDs[tid*(*offset) + (*indexGroupOffset)]; 
 //The offset into the database, taking into consideration the length of each dimension
 unsigned int pointOffset=(GPUNUMDIM)*pointIdx;
 
@@ -508,7 +508,7 @@ if (tid>=*N){
 
 #if QUERYREORDER==1
 //the point id in the dataset
-unsigned int pointIdx=orderedQueryPntIDs[tid]; 
+unsigned int pointIdx=orderedQueryPntIDs[tid*(*sampleOffset)]; 
 //The offset into the database, taking into consideration the length of each dimension
 unsigned int pointID=(GPUNUMDIM)*pointIdx; 
 #endif

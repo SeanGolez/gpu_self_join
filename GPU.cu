@@ -220,7 +220,7 @@ unsigned long long callGPUBatchEst(unsigned int * DBSIZE, DTYPE* dev_database, D
 	unsigned int GPUBufferSize=GPUBUFFERSIZE;
 
 	#ifndef PYTHON	
-	double alpha=0.5; //overestimation factor (original 0.05)
+	double alpha=0.05; //overestimation factor (original 0.05)
 	#endif
 
 	#ifdef PYTHON
@@ -646,12 +646,13 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 	//offset into the database when batching the results
 	unsigned int * batchNumber; 
 	batchNumber=(unsigned int*)malloc(sizeof(unsigned int)*GPUSTREAMS);
-	*/
 
 	unsigned int * dev_batchNumber; 
 
 	//allocate on the device
 	gpuErrchk(cudaMalloc((void**)&dev_batchNumber, sizeof(unsigned int)*GPUSTREAMS));
+
+	*/
 
 	////////////////////////////////////
 	//END OFFSET INTO THE DATABASE FOR BATCHING THE RESULTS
@@ -796,12 +797,13 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 		gpuErrchk(cudaMemcpy(dev_workCounts, workCounts, 2*sizeof(CTYPE), cudaMemcpyHostToDevice ));
 #endif
 
-	unsigned int batchSize=(*DBSIZE)/numBatches;
+	// unsigned int batchSize=(*DBSIZE)/numBatches;
 	// unsigned int batchesThatHaveOneMore=(*DBSIZE)-(batchSize*numBatches); //batch number 0- < this value have one more
 	// printf("\nBatches that have one more GPU thread: %u batchSize(N): %u, \n",batchesThatHaveOneMore,batchSize);
 
 	uint64_t totalResultsLoop=0;
 
+	/*
 	// initialize array, size =  numBatches * # of groups
 	unsigned int * batchStartsEachGroup;
 	unsigned int * batchEndsEachGroup;
@@ -829,6 +831,7 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 			}
 		}
 	}
+	*/
 
 	/*
 	for(int i=0; i<indexGroups->size(); i++) {
@@ -841,6 +844,23 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 		printf("\n");
 	}
 	*/
+
+	unsigned int * indexGroupOffset; 
+	indexGroupOffset=(unsigned int*)malloc(sizeof(unsigned int)*GPUSTREAMS);
+	
+	unsigned int * dev_indexGroupOffset; 
+	
+	//allocate on the device
+	gpuErrchk(cudaMalloc((void**)&dev_indexGroupOffset, sizeof(unsigned int)*GPUSTREAMS));
+
+	unsigned int * batchesThatHaveOneMoreForEachGroup;
+	unsigned int * batchSizeForEachGroup;
+	batchesThatHaveOneMoreForEachGroup=(unsigned int*)malloc(indexGroups->size()*sizeof(unsigned int));
+	batchSizeForEachGroup=(unsigned int*)malloc(indexGroups->size()*sizeof(unsigned int));
+	for(int i=0; i<indexGroups->size(); i++) {
+		batchSizeForEachGroup[i] = ((*indexGroups)[i].indexmax - (*indexGroups)[i].indexmin) / numBatches;
+		batchesThatHaveOneMoreForEachGroup[i]=((*indexGroups)[i].indexmax - (*indexGroups)[i].indexmin)-(batchSizeForEachGroup[i]*numBatches);
+	}
 
 	/*
 	// allocate where each batch will run for each group to GPU
@@ -917,23 +937,40 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 						printf("ERROR: tid %d is out of bounds. It should be less than %d.\n", tid, GPUSTREAMS);
 				}
 
-				N[tid]=batchEndsEachGroup[(indexGroup*numBatches)+i] - batchStartsEachGroup[(indexGroup*numBatches)+i];	
-				printf("\nN: %d tid: %d, batchStart: %d, batchEnd: %d", N[tid], tid, batchStartsEachGroup[(indexGroup*numBatches)+i], batchEndsEachGroup[(indexGroup*numBatches)+i]);
+				//N[tid]=batchEndsEachGroup[(indexGroup*numBatches)+i] - batchStartsEachGroup[(indexGroup*numBatches)+i];	
+				//printf("\nN: %d tid: %d, batchStart: %d, batchEnd: %d", N[tid], tid, batchStartsEachGroup[(indexGroup*numBatches)+i], batchEndsEachGroup[(indexGroup*numBatches)+i]);
+				if (i<batchesThatHaveOneMoreForEachGroup[indexGroup])
+				{
+					N[tid]=batchSizeForEachGroup[indexGroup]+1;	
+					printf("\nN (GPU threads): %d, tid: %d",N[tid], tid);
+				}
+				else
+				{
+					N[tid]=batchSizeForEachGroup[indexGroup];	
+					printf("\nN (1 less): %d tid: %d",N[tid], tid);
+				}
 
 				//copy N to device 
 				//N IS THE NUMBER OF THREADS
 				gpuErrchk(cudaMemcpyAsync( &dev_N[tid], &N[tid], sizeof(unsigned int), cudaMemcpyHostToDevice, stream[tid] ));
 
+
 				//the offset for batching, which keeps track of where to start processing at each batch
-				batchOffset[tid]=batchStartsEachGroup[(indexGroup*numBatches)+i];
+				// batchOffset[tid]=batchStartsEachGroup[(indexGroup*numBatches)+i];
+				batchOffset[tid]=numBatches;
 				gpuErrchk(cudaMemcpyAsync( &dev_offset[tid], &batchOffset[tid], sizeof(unsigned int), cudaMemcpyHostToDevice, stream[tid] ));
+
+				// the offset to the index group andn batch
+				indexGroupOffset[tid] = (*indexGroups)[indexGroup].indexmin + i;
+				gpuErrchk(cudaMemcpyAsync( &dev_indexGroupOffset[tid], &indexGroupOffset[tid], sizeof(unsigned int), cudaMemcpyHostToDevice, stream[tid] ));
+
 
 				const int TOTALBLOCKS=ceil((1.0*(N[tid]))/(1.0*BLOCKSIZE));
 
 				//execute kernel	
 				//0 is shared memory pool
 				kernelNDGridIndexGlobal<<< TOTALBLOCKS, BLOCKSIZE, 0, stream[tid]>>>(dev_debug1, dev_debug2, &dev_N[tid], 
-					&dev_offset[tid], dev_database, dev_epsilon, dev_allGrids+gridIncrement, dev_allIndexLookupArr+(whichIndex * (*DBSIZE)), 
+					&dev_offset[tid], &dev_indexGroupOffset[tid], dev_database, dev_epsilon, dev_allGrids+gridIncrement, dev_allIndexLookupArr+(whichIndex * (*DBSIZE)), 
 					dev_allGridCellLookupArr+gridIncrement, dev_allGridCellLookupArr+gridIncrement+allNNonEmptyCells[whichIndex], dev_allMinArr+(whichIndex * NUMINDEXEDDIM), 
 					dev_allNCells+(whichIndex * NUMINDEXEDDIM), dev_orderedIndexPntIDs, &dev_cnt[tid], dev_pointIDKey[tid], dev_pointInDistValue[tid], 
 					dev_workCounts);
@@ -1108,6 +1145,8 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
         printf("\nPoint comparisons: %llu, Cell evaluations: %llu", workCounts[0],workCounts[1]);
 #endif
 
+	printf("\nTotal number of kernel invocations: %lu", indexGroups->size()*numBatches);
+
 	
 	
 	printf("\nTOTAL RESULT SET SIZE ON HOST:  %lu", totalResultsLoop);
@@ -1172,7 +1211,8 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 	cudaFree(dev_N); 	
 	cudaFree(dev_cnt); 
 	cudaFree(dev_offset); 
-	cudaFree(dev_batchNumber); 
+	// cudaFree(dev_batchNumber); 
+	cudaFree(dev_indexGroupOffset);
 
 	
 	//free data related to the individual streams for each batch
