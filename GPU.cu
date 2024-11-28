@@ -220,6 +220,7 @@ unsigned long long callGPUBatchEst(unsigned int * DBSIZE, DTYPE* dev_database, D
 	unsigned int GPUBufferSize=GPUBUFFERSIZE;
 
 	#ifndef PYTHON	
+	// multiply by num rand indexes because points don't distribute into different indexes evenly
 	double alpha=0.05; //overestimation factor (original 0.05)
 	#endif
 
@@ -272,7 +273,8 @@ return estimatedTotalSizeWithAlpha;
 void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints, DTYPE * epsilon, struct grid * allIndex, 
 	struct gridCellLookup * allGridCellLookupArr, unsigned int * allNNonEmptyCells, DTYPE* allMinArr, unsigned int * allNCells, 
 	unsigned int * allIndexLookupArr, struct neighborTableLookup * neighborTable, std::vector<struct neighborDataPtrs> * pointersToNeighbors, 
-	uint64_t * totalNeighbors, CTYPE* workCounts, unsigned int * orderedIndexPntIDs, std::vector<indexArrayPntGroups> * indexGroups, unsigned int * orderedQueryPntIDs)
+	uint64_t * totalNeighbors, CTYPE* workCounts, unsigned int * orderedIndexPntIDs, std::vector<indexArrayPntGroups> * indexGroups, unsigned int * orderedQueryPntIDs,
+	DTYPE * batchDivider)
 {
 	// create total num empty cells for all indexes variable
 	unsigned int totalNNonemptyCells = 0;
@@ -588,6 +590,11 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 	double tendbatchest=omp_get_wtime();
 	printf("\nTime to estimate batches: %f",tendbatchest - tstartbatchest);
 	printf("\nIn Calling fn: Estimated neighbors: %llu, num. batches: %d, GPU Buffer size: %d",estimatedNeighbors, numBatches,GPUBufferSize);
+
+	// adjust batch size to account for multiple indexes causing smaller batch sizes
+	numBatches = numBatches * (*batchDivider);
+
+	printf("\nAdjusted numBatches: %d", numBatches);
 
 	//initialize new neighbortable. resize to the number of batches	
 	//Only use this if using unicomp
@@ -905,12 +912,10 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 			//N IS THE NUMBER OF THREADS
 			gpuErrchk(cudaMemcpyAsync( &dev_N[tid], &N[tid], sizeof(unsigned int), cudaMemcpyHostToDevice, stream[tid] ));
 
-			*/
 			//the batched result set size (reset to 0):
 			cnt[tid]=0;
 			gpuErrchk(cudaMemcpyAsync( &dev_cnt[tid], &cnt[tid], sizeof(unsigned int), cudaMemcpyHostToDevice, stream[tid] ));
-			
-			/*
+
 			//the offset for batching, which keeps track of where to start processing at each batch
 			batchOffset[tid]=numBatches; //for the strided
 			gpuErrchk(cudaMemcpyAsync( &dev_offset[tid], &batchOffset[tid], sizeof(unsigned int), cudaMemcpyHostToDevice, stream[tid] ));
@@ -936,6 +941,10 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 				if (tid >= GPUSTREAMS) {
 						printf("ERROR: tid %d is out of bounds. It should be less than %d.\n", tid, GPUSTREAMS);
 				}
+
+				//the batched result set size (reset to 0):
+				cnt[tid]=0;
+				gpuErrchk(cudaMemcpyAsync( &dev_cnt[tid], &cnt[tid], sizeof(unsigned int), cudaMemcpyHostToDevice, stream[tid] ));
 
 				//N[tid]=batchEndsEachGroup[(indexGroup*numBatches)+i] - batchStartsEachGroup[(indexGroup*numBatches)+i];	
 				//printf("\nN: %d tid: %d, batchStart: %d, batchEnd: %d", N[tid], tid, batchStartsEachGroup[(indexGroup*numBatches)+i], batchEndsEachGroup[(indexGroup*numBatches)+i]);
@@ -980,162 +989,164 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 								
 				// increment grid for next random offset
 				gridIncrement += allNNonEmptyCells[whichIndex];
-			}
 
-			cout <<"\n\nKERNEL LAUNCH RETURN: "<<cudaGetLastError()<<endl<<endl;
-			if ( cudaSuccess != cudaGetLastError() ){
-				cout <<"\n\nERROR IN KERNEL LAUNCH. ERROR: "<<cudaSuccess<<endl<<endl;
-			}
+
+
+				cout <<"\n\nKERNEL LAUNCH RETURN: "<<cudaGetLastError()<<endl<<endl;
+				if ( cudaSuccess != cudaGetLastError() ){
+					cout <<"\n\nERROR IN KERNEL LAUNCH. ERROR: "<<cudaSuccess<<endl<<endl;
+				}
+			
+				// find the size of the number of results
+				
+
+				errCode=cudaMemcpyAsync( &cnt[tid], &dev_cnt[tid], sizeof(unsigned int), cudaMemcpyDeviceToHost, stream[tid] );
+				if(errCode != cudaSuccess) {
+				cout << "\nError: getting cnt from GPU Got error with code " << errCode << endl; 
+				}
+				else{
+					// printf("\nGPU: result set size within epsilon (GPU grid): %d",cnt[tid]);
+					fprintf(stderr,"\nGPU: result set size within epsilon (GPU grid): %d",cnt[tid]);
+				}
+
+				//add the batched result set size to the total count
+				totalResultsLoop+=cnt[tid];
+
+				////////////////////////////////////
+				//SORT THE TABLE DATA ON THE GPU
+				//THERE IS NO ORDERING BETWEEN EACH POINT AND THE ONES THAT IT'S WITHIN THE DISTANCE OF
+				////////////////////////////////////
+
+				//sort by key with the data already on the device:
+				//wrap raw pointer with a device_ptr to use with Thrust functions
+				thrust::device_ptr<int> dev_keys_ptr(dev_pointIDKey[tid]);
+				thrust::device_ptr<int> dev_data_ptr(dev_pointInDistValue[tid]);
+
+				//XXXXXXXXXXXXXXXX
+				//THRUST USING STREAMS REQUIRES THRUST V1.8 
+				//XXXXXXXXXXXXXXXX
+				
+				
+				try{
+				thrust::sort_by_key(thrust::cuda::par.on(stream[tid]), dev_keys_ptr, dev_keys_ptr + cnt[tid], dev_data_ptr);
+
+
+				}
+				catch(std::bad_alloc &e)
+				{
+					std::cerr << "Ran out of memory while sorting, " << GPUBufferSize << std::endl;
+					exit(-1);
+				}
+				
+
+
+				//thrust with streams into individual buffers for each batch
+				
+				cudaMemcpyAsync(thrust::raw_pointer_cast(pointIDKey[tid]), thrust::raw_pointer_cast(dev_keys_ptr), cnt[tid]*sizeof(int), cudaMemcpyDeviceToHost, stream[tid]);
+				cudaMemcpyAsync(thrust::raw_pointer_cast(pointInDistValue[tid]), thrust::raw_pointer_cast(dev_data_ptr), cnt[tid]*sizeof(int), cudaMemcpyDeviceToHost, stream[tid]);	
+
+				//need to make sure the data is copied before constructing portion of the neighbor table
+				cudaStreamSynchronize(stream[tid]);
+
+				double tableconstuctstart=omp_get_wtime();
+				//set the number of neighbors in the pointer struct:
+				(*pointersToNeighbors)[i].sizeOfDataArr=cnt[tid];    
+				(*pointersToNeighbors)[i].dataPtr=new int[cnt[tid]]; 
+
+				////////////////////////////
+				//New with multiple pointers to data arrays
+				unsigned int uniqueCnt=0;
+				unsigned int * dev_uniqueCnt; 
+				
+				//allocate on the device
+				gpuErrchk(cudaMalloc((void**)&dev_uniqueCnt, sizeof(unsigned int)));
+
+				//iniitalize the count to 0
+				gpuErrchk(cudaMemcpyAsync( dev_uniqueCnt, &uniqueCnt, sizeof(unsigned int), cudaMemcpyHostToDevice, stream[tid] ));
+
+				//host side result
+				int * uniqueKey=new int[cnt[tid]];
+				int * uniqueKeyPosition=new int[cnt[tid]];
+
+				int * dev_uniqueKey;
+				int * dev_uniqueKeyPosition;
+
+				
+				
+				//allocate memory on device:
+				
+				gpuErrchk(cudaMalloc( (void**)&dev_uniqueKey, sizeof(int)*(cnt[tid])));
+
+				
+				gpuErrchk(cudaMalloc( (void**)&dev_uniqueKeyPosition, sizeof(int)*(cnt[tid])));
+				
 		
-			// find the size of the number of results
-			
+				const int TOTALBLOCKS2=ceil((1.0*(cnt[tid]))/(1.0*BLOCKSIZE));	
+				printf("\ntotal blocks: %d",TOTALBLOCKS2);
 
-			errCode=cudaMemcpyAsync( &cnt[tid], &dev_cnt[tid], sizeof(unsigned int), cudaMemcpyDeviceToHost, stream[tid] );
-			if(errCode != cudaSuccess) {
-			cout << "\nError: getting cnt from GPU Got error with code " << errCode << endl; 
-			}
-			else{
-				// printf("\nGPU: result set size within epsilon (GPU grid): %d",cnt[tid]);
-				fprintf(stderr,"\nGPU: result set size within epsilon (GPU grid): %d",cnt[tid]);
-			}
+				//execute kernel for uniquing the keys	
+				//0 is shared memory pool
+				kernelUniqueKeys<<< TOTALBLOCKS2, BLOCKSIZE, 0, stream[tid]>>>(dev_pointIDKey[tid], &dev_cnt[tid], dev_uniqueKey, dev_uniqueKeyPosition, dev_uniqueCnt);
 
-			//add the batched result set size to the total count
-			totalResultsLoop+=cnt[tid];
+				cudaStreamSynchronize(stream[tid]);
+				
+				cout <<"\n\n UNIQUE KEY KERNEL LAUNCH RETURN: "<<cudaGetLastError()<<endl<<endl;
+				if ( cudaSuccess != cudaGetLastError() ){
+					cout <<"\n\nERROR IN UNIQUE KEY KERNEL LAUNCH. ERROR: "<<cudaSuccess<<endl<<endl;
+				}
+				//get the number of unique keys
+				
+				gpuErrchk(cudaMemcpyAsync( &uniqueCnt, dev_uniqueCnt, sizeof(unsigned int), cudaMemcpyDeviceToHost, stream[tid] ));
+				cudaStreamSynchronize(stream[tid]);
+				printf("\nGPU: unique keys (batch: %d): %u",i,uniqueCnt);fflush(stdout);
+				
 
-			////////////////////////////////////
-			//SORT THE TABLE DATA ON THE GPU
-			//THERE IS NO ORDERING BETWEEN EACH POINT AND THE ONES THAT IT'S WITHIN THE DISTANCE OF
-			////////////////////////////////////
+				
 
-			//sort by key with the data already on the device:
-			//wrap raw pointer with a device_ptr to use with Thrust functions
-			thrust::device_ptr<int> dev_keys_ptr(dev_pointIDKey[tid]);
-			thrust::device_ptr<int> dev_data_ptr(dev_pointInDistValue[tid]);
-
-			//XXXXXXXXXXXXXXXX
-			//THRUST USING STREAMS REQUIRES THRUST V1.8 
-			//XXXXXXXXXXXXXXXX
-			
-			
-			try{
-			thrust::sort_by_key(thrust::cuda::par.on(stream[tid]), dev_keys_ptr, dev_keys_ptr + cnt[tid], dev_data_ptr);
+				
 
 
-			}
-			catch(std::bad_alloc &e)
-			{
-				std::cerr << "Ran out of memory while sorting, " << GPUBufferSize << std::endl;
-				exit(-1);
-			}
-			
+				//sort by key with the data already on the device:
+				//wrap raw pointer with a device_ptr to use with Thrust functions
+				thrust::device_ptr<int> dev_uniqueKey_ptr(dev_uniqueKey);
+				thrust::device_ptr<int> dev_uniqueKeyPosition_ptr(dev_uniqueKeyPosition);
 
-
-			//thrust with streams into individual buffers for each batch
-			
-			cudaMemcpyAsync(thrust::raw_pointer_cast(pointIDKey[tid]), thrust::raw_pointer_cast(dev_keys_ptr), cnt[tid]*sizeof(int), cudaMemcpyDeviceToHost, stream[tid]);
-			cudaMemcpyAsync(thrust::raw_pointer_cast(pointInDistValue[tid]), thrust::raw_pointer_cast(dev_data_ptr), cnt[tid]*sizeof(int), cudaMemcpyDeviceToHost, stream[tid]);	
-
-			//need to make sure the data is copied before constructing portion of the neighbor table
-			cudaStreamSynchronize(stream[tid]);
-
-			double tableconstuctstart=omp_get_wtime();
-			//set the number of neighbors in the pointer struct:
-			(*pointersToNeighbors)[i].sizeOfDataArr=cnt[tid];    
-			(*pointersToNeighbors)[i].dataPtr=new int[cnt[tid]]; 
-
-			////////////////////////////
-			//New with multiple pointers to data arrays
-			unsigned int uniqueCnt=0;
-			unsigned int * dev_uniqueCnt; 
-			
-			//allocate on the device
-			gpuErrchk(cudaMalloc((void**)&dev_uniqueCnt, sizeof(unsigned int)));
-
-			//iniitalize the count to 0
-			gpuErrchk(cudaMemcpyAsync( dev_uniqueCnt, &uniqueCnt, sizeof(unsigned int), cudaMemcpyHostToDevice, stream[tid] ));
-
-			//host side result
-			int * uniqueKey=new int[cnt[tid]];
-			int * uniqueKeyPosition=new int[cnt[tid]];
-
-			int * dev_uniqueKey;
-			int * dev_uniqueKeyPosition;
-
-			
-			
-			//allocate memory on device:
-			
-			gpuErrchk(cudaMalloc( (void**)&dev_uniqueKey, sizeof(int)*(cnt[tid])));
-
-			
-			gpuErrchk(cudaMalloc( (void**)&dev_uniqueKeyPosition, sizeof(int)*(cnt[tid])));
-			
-	
-			const int TOTALBLOCKS2=ceil((1.0*(cnt[tid]))/(1.0*BLOCKSIZE));	
-			printf("\ntotal blocks: %d",TOTALBLOCKS2);
-
-			//execute kernel for uniquing the keys	
-			//0 is shared memory pool
-			kernelUniqueKeys<<< TOTALBLOCKS2, BLOCKSIZE, 0, stream[tid]>>>(dev_pointIDKey[tid], &dev_cnt[tid], dev_uniqueKey, dev_uniqueKeyPosition, dev_uniqueCnt);
-
-			cudaStreamSynchronize(stream[tid]);
-			
-			cout <<"\n\n UNIQUE KEY KERNEL LAUNCH RETURN: "<<cudaGetLastError()<<endl<<endl;
-			if ( cudaSuccess != cudaGetLastError() ){
-				cout <<"\n\nERROR IN UNIQUE KEY KERNEL LAUNCH. ERROR: "<<cudaSuccess<<endl<<endl;
-			}
-			//get the number of unique keys
-			
-			gpuErrchk(cudaMemcpyAsync( &uniqueCnt, dev_uniqueCnt, sizeof(unsigned int), cudaMemcpyDeviceToHost, stream[tid] ));
-			cudaStreamSynchronize(stream[tid]);
-			printf("\nGPU: unique keys (batch: %d): %u",i,uniqueCnt);fflush(stdout);
-			
-
-			
-
-			
-
-
-			//sort by key with the data already on the device:
-			//wrap raw pointer with a device_ptr to use with Thrust functions
-			thrust::device_ptr<int> dev_uniqueKey_ptr(dev_uniqueKey);
-			thrust::device_ptr<int> dev_uniqueKeyPosition_ptr(dev_uniqueKeyPosition);
-
-			try{
-			thrust::sort_by_key(thrust::cuda::par.on(stream[tid]), dev_uniqueKey_ptr, dev_uniqueKey_ptr + uniqueCnt, dev_uniqueKeyPosition_ptr);
-			}
-			catch(std::bad_alloc &e)
-			{
-				std::cerr << "Ran out of memory while sorting, " << GPUBufferSize << std::endl;
-				exit(-1);
-			}
+				try{
+				thrust::sort_by_key(thrust::cuda::par.on(stream[tid]), dev_uniqueKey_ptr, dev_uniqueKey_ptr + uniqueCnt, dev_uniqueKeyPosition_ptr);
+				}
+				catch(std::bad_alloc &e)
+				{
+					std::cerr << "Ran out of memory while sorting, " << GPUBufferSize << std::endl;
+					exit(-1);
+				}
 
 
 
-			//thrust with streams into individual buffers for each batch
-			cudaMemcpyAsync(thrust::raw_pointer_cast(uniqueKey), thrust::raw_pointer_cast(dev_uniqueKey_ptr), uniqueCnt*sizeof(int), cudaMemcpyDeviceToHost, stream[tid]);
-			cudaMemcpyAsync(thrust::raw_pointer_cast(uniqueKeyPosition), thrust::raw_pointer_cast(dev_uniqueKeyPosition_ptr), uniqueCnt*sizeof(int), cudaMemcpyDeviceToHost, stream[tid]);	
+				//thrust with streams into individual buffers for each batch
+				cudaMemcpyAsync(thrust::raw_pointer_cast(uniqueKey), thrust::raw_pointer_cast(dev_uniqueKey_ptr), uniqueCnt*sizeof(int), cudaMemcpyDeviceToHost, stream[tid]);
+				cudaMemcpyAsync(thrust::raw_pointer_cast(uniqueKeyPosition), thrust::raw_pointer_cast(dev_uniqueKeyPosition_ptr), uniqueCnt*sizeof(int), cudaMemcpyDeviceToHost, stream[tid]);	
 
-			//need to make sure the data is copied before constructing portion of the neighbor table
-			cudaStreamSynchronize(stream[tid]);
-
-
-
-			constructNeighborTableKeyValueWithPtrsWithMultipleUpdatesMultipleDataArrays(pointIDKey[tid], pointInDistValue[tid], neighborTable, (*pointersToNeighbors)[i].dataPtr, &cnt[tid], uniqueKey, uniqueKeyPosition, uniqueCnt);
-
-			cudaFree(dev_uniqueCnt);
-			cudaFree(dev_uniqueKey);
-			cudaFree(dev_uniqueKeyPosition);
-			cudaStreamSynchronize(stream[tid]);
-			
-			double tableconstuctend=omp_get_wtime();	
-			
-			printf("\nTable construct time: %f", tableconstuctend - tableconstuctstart);
+				//need to make sure the data is copied before constructing portion of the neighbor table
+				cudaStreamSynchronize(stream[tid]);
 
 
-			printf("\nRunning total of total size of result array, tid: %d: %lu", tid, totalResultsLoop);
 
-		
+				constructNeighborTableKeyValueWithPtrsWithMultipleUpdatesMultipleDataArrays(pointIDKey[tid], pointInDistValue[tid], neighborTable, (*pointersToNeighbors)[i].dataPtr, &cnt[tid], uniqueKey, uniqueKeyPosition, uniqueCnt);
+
+				cudaFree(dev_uniqueCnt);
+				cudaFree(dev_uniqueKey);
+				cudaFree(dev_uniqueKeyPosition);
+				cudaStreamSynchronize(stream[tid]);
+				
+				double tableconstuctend=omp_get_wtime();	
+				
+				printf("\nTable construct time: %f", tableconstuctend - tableconstuctstart);
+
+
+				printf("\nRunning total of total size of result array, tid: %d: %lu", tid, totalResultsLoop);
+
+
+			}		
 
 		} //END LOOP OVER THE GPU BATCHES
 

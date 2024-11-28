@@ -403,18 +403,29 @@ int main(int argc, char *argv[])
 		}
 	#endif
 
+
+	unsigned int largestCount = 0;
 	for(int i=0; i<NUMRANDINDEXES; i++) {
-        int count = std::count_if(indexPoints.begin(), indexPoints.end(), [&i](const indexArrayPnt& p) {
+        unsigned int count = std::count_if(indexPoints.begin(), indexPoints.end(), [&i](const indexArrayPnt& p) {
             return p.whichIndex == i; // Compare whichIndex with i
         });
         
         // Print the result
         printf("%d: %d\n", i, count);
+
+		if( count > largestCount ) {
+			largestCount = count;
+		}
 	}
+
+	DTYPE batchDivider = (DTYPE)largestCount / (DTYPE)NDdataPoints.size();
+
+	printf("batchDivider: %f\n", batchDivider);
 
 	/*
 	for(auto elem:indexGroups) {
 		printf("%d: %d, %d\n", elem.index, elem.indexmin, elem.indexmax);
+		
 	}
 	*/
 
@@ -450,7 +461,7 @@ int main(int argc, char *argv[])
 
 	double tstart = omp_get_wtime();
 
-	distanceTableNDGridBatches(&NDdataPoints, &epsilon, allIndex, allGridCellLookupArr, allNNonEmptyCells, allMinArr, allNCells, allIndexLookupArr, neighborTable, &pointersToNeighbors, &totalNeighbors, workCounts, orderedIndexPntIDs, &indexGroups, orderedQueryPntIDs);
+	distanceTableNDGridBatches(&NDdataPoints, &epsilon, allIndex, allGridCellLookupArr, allNNonEmptyCells, allMinArr, allNCells, allIndexLookupArr, neighborTable, &pointersToNeighbors, &totalNeighbors, workCounts, orderedIndexPntIDs, &indexGroups, orderedQueryPntIDs, &batchDivider);
 
 	double tend = omp_get_wtime();
 
