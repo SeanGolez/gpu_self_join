@@ -403,8 +403,9 @@ int main(int argc, char *argv[])
 		}
 	#endif
 
+	// get divider to adjust batches to index size
+	DTYPE * batchDivider = (DTYPE *)malloc(sizeof(DTYPE) * NUMRANDINDEXES);
 
-	unsigned int largestCount = 0;
 	for(int i=0; i<NUMRANDINDEXES; i++) {
         unsigned int count = std::count_if(indexPoints.begin(), indexPoints.end(), [&i](const indexArrayPnt& p) {
             return p.whichIndex == i; // Compare whichIndex with i
@@ -413,14 +414,11 @@ int main(int argc, char *argv[])
         // Print the result
         printf("%d: %d\n", i, count);
 
-		if( count > largestCount ) {
-			largestCount = count;
-		}
+		batchDivider[i] = (DTYPE)count / (DTYPE)indexPoints.size();
+
+		
+		printf("batchDivider %d: %f\n", i, batchDivider[i]);
 	}
-
-	DTYPE batchDivider = (DTYPE)largestCount / (DTYPE)NDdataPoints.size();
-
-	printf("batchDivider: %f\n", batchDivider);
 
 	/*
 	for(auto elem:indexGroups) {
@@ -461,7 +459,7 @@ int main(int argc, char *argv[])
 
 	double tstart = omp_get_wtime();
 
-	distanceTableNDGridBatches(&NDdataPoints, &epsilon, allIndex, allGridCellLookupArr, allNNonEmptyCells, allMinArr, allNCells, allIndexLookupArr, neighborTable, &pointersToNeighbors, &totalNeighbors, workCounts, orderedIndexPntIDs, &indexGroups, orderedQueryPntIDs, &batchDivider);
+	distanceTableNDGridBatches(&NDdataPoints, &epsilon, allIndex, allGridCellLookupArr, allNNonEmptyCells, allMinArr, allNCells, allIndexLookupArr, neighborTable, &pointersToNeighbors, &totalNeighbors, workCounts, orderedIndexPntIDs, &indexGroups, orderedQueryPntIDs, batchDivider);
 
 	double tend = omp_get_wtime();
 
@@ -495,6 +493,8 @@ int main(int argc, char *argv[])
 	delete[] allIndex;
 	delete[] allGridCellLookupArr;
 	delete[] orderedIndexPntIDs;
+
+	free(batchDivider);
 }
 #endif // end #if not Python (standard C version)
 
