@@ -146,8 +146,9 @@ int main(int argc, char *argv[])
 	printf("\n*****************\n");
 	double totalTime = 0;
 
-#if REORDER == 1
+
 	double timeReorderByDimVariance = 0;
+#if REORDER == 1
 	double reorder_start = omp_get_wtime();
 	ReorderByDimension(&NDdataPoints);
 	double reorder_end = omp_get_wtime();
