@@ -220,7 +220,7 @@ unsigned long long callGPUBatchEst(unsigned int * DBSIZE, DTYPE* dev_database, D
 	unsigned int GPUBufferSize=GPUBUFFERSIZE;
 
 	#ifndef PYTHON
-	double alpha=0.1; //overestimation factor (original 0.05)
+	double alpha=0.05; //overestimation factor (original 0.05)
 	#endif
 
 	#ifdef PYTHON
@@ -596,7 +596,7 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 	for( int i=0; i<NUMRANDINDEXES; i++ ) {
 		numBatchesEachIndex[i] = numBatches * batchDivider[i];
 		
-		printf("\nAdjusted numBatches for index %d: %d", i, numBatchesEachIndex[i]);
+		// printf("\nAdjusted numBatches for index %d: %d", i, numBatchesEachIndex[i]);
 		
 		if( numBatchesEachIndex[i] > largestNumBatches ) {
 			largestNumBatches = numBatchesEachIndex[i];
@@ -873,9 +873,9 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 	batchSizeForEachGroup=(unsigned int*)malloc(indexGroups->size()*sizeof(unsigned int));
 	for(int i=0; i<indexGroups->size(); i++) {
 		batchSizeForEachGroup[i] = ((*indexGroups)[i].indexmax - (*indexGroups)[i].indexmin) / numBatchesEachIndex[i];
-		printf("\nBatch size %d: %d", i, batchSizeForEachGroup[i]);
 		batchesThatHaveOneMoreForEachGroup[i]=((*indexGroups)[i].indexmax - (*indexGroups)[i].indexmin)-(batchSizeForEachGroup[i]*numBatchesEachIndex[i]);
-		printf("\nBatches that have one more for %d: %d", i, batchesThatHaveOneMoreForEachGroup[i]);
+		printf("\batchSizeForEachGroup %d: %d", i, batchSizeForEachGroup[i]);
+		printf("\nbatchesThatHaveOneMoreForEachGroup %d: %d", i, batchesThatHaveOneMoreForEachGroup[i]);
 	}
 
 	/*
@@ -947,7 +947,7 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 			for(int indexGroup=0; indexGroup<indexGroups->size(); indexGroup++) {
 				// get index
 				unsigned int whichIndex = (*indexGroups)[indexGroup].index;
-				
+
 				if( i < numBatchesEachIndex[indexGroup] ) {
 					
 					printf("\ntid: %d, starting iteration: %d, Launch kernel for index offset %d",tid,i,whichIndex);

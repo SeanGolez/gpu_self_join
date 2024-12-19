@@ -514,7 +514,7 @@ unsigned int pointID=(GPUNUMDIM)*pointIdx;
 #endif
 
 #if QUERYREORDER==0
-unsigned int pointID=tid*(GPUNUMDIM);
+unsigned int pointID=tid*(*sampleOffset)*(GPUNUMDIM);
 #endif
 
 //make a local copy of the point
