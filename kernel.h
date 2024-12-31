@@ -13,9 +13,9 @@ __global__ void kernelNDGridIndexGlobal(unsigned int *debug1, unsigned int *debu
 	unsigned int * orderedIndexPntIDs, unsigned int * cnt, int * pointIDKey, int * pointInDistVal, CTYPE* workCounts);
 
 __global__ void kernelNDGridIndexBatchEstimator(unsigned int *debug1, unsigned int *debug2, unsigned int *N,  
-	unsigned int * sampleOffset, DTYPE* database, DTYPE* epsilon, struct grid * index, unsigned int * indexLookupArr, 
-	struct gridCellLookup * gridCellLookupArrStart, struct gridCellLookup * gridCellLookupArrEnd,DTYPE* minArr, unsigned int * nCells, unsigned int * cnt,
-	unsigned int * orderedQueryPntIDs);
+	unsigned int * sampleOffset, const unsigned int DBSIZE, DTYPE* database, const DTYPE epsilon, unsigned int * whichIndexPoints, struct grid * allIndex, unsigned int * allIndexLookupArr, 
+	struct gridCellLookup * allGridCellLookupArr, DTYPE* allMinArr, unsigned int * allNCells, gridCellLookup ** startGridPtrs, gridCellLookup ** stopGridPtrs, grid ** startIndexPtrs,
+	unsigned int * cnt, unsigned int * allNNonEmptyCells, unsigned int * orderedQueryPntIDs);
 
 __device__ uint64_t getLinearID_nDimensionsGPU(unsigned int * indexes, unsigned int * dimLen, unsigned int nDimensions);
 __device__ void getNDimIndexesFromLinearIdxGPU(unsigned int * indexes, unsigned int * dimLen, unsigned int nDimensions, uint64_t linearId);
