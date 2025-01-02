@@ -12,10 +12,9 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 	unsigned int * whichIndexPoints);
 
 
-unsigned long long callGPUBatchEst(unsigned int DBSIZE, DTYPE* dev_database, DTYPE epsilon, unsigned int * dev_whichIndexPoints, struct grid * dev_grid, 
-	unsigned int * dev_indexLookupArr, struct gridCellLookup * dev_gridCellLookupArr, DTYPE* dev_minArr, unsigned int * dev_nCells, unsigned int * dev_nNonEmptyCells, 
-	unsigned int * dev_orderedQueryPntIDs, gridCellLookup ** dev_startGridPtrs, gridCellLookup ** dev_stopGridPtrs, grid ** dev_startIndexPtrs,
-	unsigned int * retNumBatches, unsigned int * retGPUBufferSize);
+unsigned long long callGPUBatchEst(unsigned int DBSIZE, DTYPE* dev_database, DTYPE epsilon, unsigned int * whichIndexPoints, struct grid * dev_allGrids, 
+	unsigned int * dev_allIndexLookupArr, struct gridCellLookup * dev_allGridCellLookupArr, unsigned int * gridIncrementEachIndex, DTYPE* dev_allMinArr, 
+	unsigned int * dev_allNCells, unsigned int * allNNonEmptyCells, unsigned int * orderedQueryPntIDs, unsigned int * retNumBatches, unsigned int * retGPUBufferSize);
 
 void constructNeighborTableKeyValueWithPtrs(int * pointIDKey, int * pointInDistValue, struct neighborTableLookup * neighborTable, int * pointersToNeighbors, unsigned int * cnt);
 

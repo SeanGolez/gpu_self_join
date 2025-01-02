@@ -9,13 +9,13 @@ __global__ void kernelBruteForce(unsigned int *N, unsigned int *debug1, unsigned
 
 __global__ void kernelNDGridIndexGlobal(unsigned int *debug1, unsigned int *debug2, unsigned int *N,  
 	unsigned int * offset, unsigned int * indexGroupOffset, DTYPE* database, DTYPE * epsilon, struct grid * index, unsigned int * indexLookupArr, 
-	struct gridCellLookup * gridCellLookupArrStart, struct gridCellLookup * gridCellLookupArrStartEnd, DTYPE* minArr, unsigned int * nCells, 
+	struct gridCellLookup * gridCellLookupArrStart, struct gridCellLookup * gridCellLookupArrEnd, DTYPE* minArr, unsigned int * nCells, 
 	unsigned int * orderedIndexPntIDs, unsigned int * cnt, int * pointIDKey, int * pointInDistVal, CTYPE* workCounts);
 
 __global__ void kernelNDGridIndexBatchEstimator(unsigned int *debug1, unsigned int *debug2, unsigned int *N,  
-	unsigned int * sampleOffset, const unsigned int DBSIZE, DTYPE* database, const DTYPE epsilon, unsigned int * whichIndexPoints, struct grid * allIndex, unsigned int * allIndexLookupArr, 
-	struct gridCellLookup * allGridCellLookupArr, DTYPE* allMinArr, unsigned int * allNCells, gridCellLookup ** startGridPtrs, gridCellLookup ** stopGridPtrs, grid ** startIndexPtrs,
-	unsigned int * cnt, unsigned int * allNNonEmptyCells, unsigned int * orderedQueryPntIDs);
+	DTYPE* database, const DTYPE epsilon, unsigned int * indexSample, struct grid * index, unsigned int * indexLookupArr, 
+	struct gridCellLookup * gridCellLookupArrStart, struct gridCellLookup * gridCellLookupArrEnd, DTYPE* minArr, unsigned int * nCells,
+	unsigned int * cnt);
 
 __device__ uint64_t getLinearID_nDimensionsGPU(unsigned int * indexes, unsigned int * dimLen, unsigned int nDimensions);
 __device__ void getNDimIndexesFromLinearIdxGPU(unsigned int * indexes, unsigned int * dimLen, unsigned int nDimensions, uint64_t linearId);
@@ -26,7 +26,7 @@ __global__ void kernelSortPointsInCells(DTYPE* database, struct grid * index, un
 __global__ void kernelUniqueKeys(int * pointIDKey, unsigned int * N, int * uniqueKey, int * uniqueKeyPosition, unsigned int * cnt);
 
 __device__ void evaluateCell(unsigned int* nCells, unsigned int* indexes, DTYPE* database, 
-	DTYPE * epsilon, struct grid * index, unsigned int * indexLookupArr, struct gridCellLookup * gridCellLookupArrStart, struct gridCellLookup * gridCellLookupArrStartEnd, 
+	DTYPE * epsilon, struct grid * index, unsigned int * indexLookupArr, struct gridCellLookup * gridCellLookupArrStart, struct gridCellLookup * gridCellLookupArrEnd, 
 	DTYPE* point, unsigned int* cnt,int* pointIDKey, int* pointInDistVal, int pointIdx, bool differentCell, unsigned int* nDCellIDs, CTYPE* workCounts);
 
 //functions for index on the GPU
