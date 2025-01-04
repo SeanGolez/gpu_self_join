@@ -12,7 +12,7 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 	unsigned int * whichIndexPoints);
 
 
-unsigned long long callGPUBatchEst(unsigned int DBSIZE, DTYPE* dev_database, DTYPE epsilon, unsigned int * dev_whichIndexPoints, struct grid * dev_grid, 
+unsigned long long callGPUBatchEst(unsigned int DBSIZE, DTYPE* dev_database, DTYPE* dev_rearrangedDatabase, DTYPE epsilon, unsigned int * dev_whichIndexPoints, struct grid * dev_grid, 
 	unsigned int * dev_indexLookupArr, struct gridCellLookup * dev_gridCellLookupArr, DTYPE* dev_minArr, unsigned int * dev_nCells, unsigned int * dev_nNonEmptyCells, 
 	unsigned int * dev_orderedQueryPntIDs, gridCellLookup ** dev_startGridPtrs, gridCellLookup ** dev_stopGridPtrs, grid ** dev_startIndexPtrs,
 	unsigned int * retNumBatches, unsigned int * retGPUBufferSize);
@@ -46,3 +46,6 @@ void constructNeighborTableKeyValueWithPtrsBatchMaskArray(int * pointIDKey, int 
 //Sort the queries by their workload based on the number of points in the cell
 //From hybrid KNN paper in GPGPU'19 
 void computeWorkDifficulty(unsigned int * outputOrderedQueryPntIDs, struct gridCellLookup * gridCellLookupArr, unsigned int * nNonEmptyCells, unsigned int * indexLookupArr, struct grid * index);
+
+// used to arrange database for efficient memory accesses on batch estimator
+void rearrangeDatabase( DTYPE * dev_database, const unsigned int DBSIZE, DTYPE * rearrangedDatabaseOut );

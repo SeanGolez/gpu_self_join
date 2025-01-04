@@ -55,7 +55,14 @@ bool compareByPointValue(const key_val_sort &a, const key_val_sort &b)
 }
 
 
-unsigned long long callGPUBatchEst(unsigned int DBSIZE, DTYPE* dev_database, DTYPE epsilon, unsigned int * dev_whichIndexPoints, struct grid * dev_grid, 
+void rearrangeDatabase( DTYPE * dev_database, const unsigned int DBSIZE, DTYPE * dev_rearrangedDatabaseOut ) 
+{
+	const int TOTALBLOCKS=ceil((1.0*DBSIZE)/(1.0*BLOCKSIZE));
+	kernelConstructRearrangedDatabase <<< TOTALBLOCKS, BLOCKSIZE >>> (dev_database, DBSIZE, dev_rearrangedDatabaseOut);
+}
+
+
+unsigned long long callGPUBatchEst(unsigned int DBSIZE, DTYPE* dev_database, DTYPE* dev_rearrangedDatabase, DTYPE epsilon, unsigned int * dev_whichIndexPoints, struct grid * dev_grid, 
 	unsigned int * dev_indexLookupArr, struct gridCellLookup * dev_gridCellLookupArr, DTYPE* dev_minArr, unsigned int * dev_nCells, unsigned int * dev_nNonEmptyCells, 
 	unsigned int * dev_orderedQueryPntIDs, gridCellLookup ** dev_startGridPtrs, gridCellLookup ** dev_stopGridPtrs, grid ** dev_startIndexPtrs,
 	unsigned int * retNumBatches, unsigned int * retGPUBufferSize)
@@ -195,7 +202,7 @@ unsigned long long callGPUBatchEst(unsigned int DBSIZE, DTYPE* dev_database, DTY
 	
 
 	kernelNDGridIndexBatchEstimator<<< TOTALBLOCKSBATCHEST, BLOCKSIZE>>>(dev_debug1, dev_debug2, dev_N_batchEst, 
-		dev_sampleOffset, DBSIZE, dev_database, epsilon, dev_whichIndexPoints, dev_grid, dev_indexLookupArr, 
+		dev_sampleOffset, DBSIZE, dev_database, dev_rearrangedDatabase, epsilon, dev_whichIndexPoints, dev_grid, dev_indexLookupArr, 
 		dev_gridCellLookupArr, dev_minArr, dev_nCells, dev_startGridPtrs, dev_stopGridPtrs, dev_startIndexPtrs,
 		dev_cnt_batchEst, dev_nNonEmptyCells, dev_orderedQueryPntIDs);
 		cout<<"\n** ERROR FROM KERNEL LAUNCH OF BATCH ESTIMATOR: "<<cudaGetLastError();
@@ -369,10 +376,22 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 	///////////////////////////////////
 
 
+	///////////////////////////////////
+	//REARRANGE THE DATABASE TO BE GROUPED BY DIMENSIONS
+	///////////////////////////////////
 
+	DTYPE* dev_rearrangedDatabase = NULL;
+
+	#if REARRANGEDATABASE == 1
+	//allocate memory on device
+	gpuErrchk(cudaMalloc( (void**)&dev_rearrangedDatabase, sizeof(DTYPE)*(GPUNUMDIM)*(*DBSIZE)));
+
+	// populate the rearranged database on device
+	rearrangeDatabase( dev_database, *DBSIZE, dev_rearrangedDatabase );
+	#endif
 
 	///////////////////////////////////
-	//COPY THE INDEX TO THE GPU
+	//END REARRANGE THE DATABASE TO BE GROUPED BY DIMENSIONS
 	///////////////////////////////////
 
 	struct grid * dev_allGrids;
@@ -652,7 +671,7 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 	unsigned int GPUBufferSize=0;
 
 	double tstartbatchest=omp_get_wtime();
-	estimatedNeighbors=callGPUBatchEst(*DBSIZE, dev_database, *epsilon, dev_whichIndexPoints, dev_allGrids, dev_allIndexLookupArr, dev_allGridCellLookupArr, 
+	estimatedNeighbors=callGPUBatchEst(*DBSIZE, dev_database, dev_rearrangedDatabase, *epsilon, dev_whichIndexPoints, dev_allGrids, dev_allIndexLookupArr, dev_allGridCellLookupArr, 
 										dev_allMinArr, dev_allNCells, dev_allNNonEmptyCells, dev_orderedQueryPntIDs, dev_startGridPtrs, dev_stopGridPtrs, dev_startIndexPtrs, 
 										numBatchesEachIndex, &GPUBufferSize);	
 	double tendbatchest=omp_get_wtime();
@@ -1339,6 +1358,7 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 	cudaFree(dev_offset); 
 	// cudaFree(dev_batchNumber); 
 	cudaFree(dev_indexGroupOffset);
+	cudaFree(dev_rearrangedDatabase);
 
 	free(database);
 	free(totalResultSetCnt);

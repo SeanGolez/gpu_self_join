@@ -495,7 +495,7 @@ return;
 
 //for descriptions of the parameters, see regular kernel that computes the result (not the batch estimator)
 __global__ void kernelNDGridIndexBatchEstimator(unsigned int *debug1, unsigned int *debug2, unsigned int *N,  
-	unsigned int * sampleOffset, const unsigned int DBSIZE, DTYPE* database, const DTYPE epsilon, unsigned int * whichIndexPoints, struct grid * allIndex, unsigned int * allIndexLookupArr, 
+	unsigned int * sampleOffset, const unsigned int DBSIZE, DTYPE* database, DTYPE* rearrangedDatabase, const DTYPE epsilon, unsigned int * whichIndexPoints, struct grid * allIndex, unsigned int * allIndexLookupArr, 
 	struct gridCellLookup * allGridCellLookupArr, DTYPE* allMinArr, unsigned int * allNCells, gridCellLookup ** startGridPtrs, gridCellLookup ** stopGridPtrs, grid ** startIndexPtrs,
 	unsigned int * cnt, unsigned int * allNNonEmptyCells, unsigned int * orderedQueryPntIDs)
 {
@@ -589,7 +589,12 @@ for (int i=0; i<NUMINDEXEDDIM; i++){
 				
 
 				for (int l=0; l<GPUNUMDIM; l++){
-				runningTotalDist+=(database[dataIdx*GPUNUMDIM+l]-point[l])*(database[dataIdx*GPUNUMDIM+l]-point[l]);
+					#if REARRANGEDATABASE == 0
+					runningTotalDist+=(database[dataIdx*GPUNUMDIM+l]-point[l])*(database[dataIdx*GPUNUMDIM+l]-point[l]);
+					#endif
+					#if REARRANGEDATABASE == 1
+					runningTotalDist+=(rearrangedDatabase[l*DBSIZE+dataIdx]-point[l])*(rearrangedDatabase[l*DBSIZE+dataIdx]-point[l]);
+					#endif
 				}
 
 
@@ -649,7 +654,7 @@ __global__ void kernelIndexComputeNonemptyCells(DTYPE* database, unsigned int *N
 }
 
 
-__global__ void kernelIndexComputeAdjacentCells(uint64_t * celllDistCalcArr, uint64_t * uniqueCellArr, uint64_t * cellNumPointsArr, unsigned int * nCells, unsigned int * nNonEmptyCells, int *incrementors, unsigned int * nAdjCells)
+__global__ void kernelIndexComputeAdjacentCells(uint64_t * cellDistCalcArr, uint64_t * uniqueCellArr, uint64_t * cellNumPointsArr, unsigned int * nCells, unsigned int * nNonEmptyCells, int *incrementors, unsigned int * nAdjCells)
 {
 	unsigned int tid=threadIdx.x+ (blockIdx.x*BLOCKSIZE); 
 
@@ -675,7 +680,7 @@ __global__ void kernelIndexComputeAdjacentCells(uint64_t * celllDistCalcArr, uin
 	// loop through each incrementor vector
 	for (int i=0; i<(*nAdjCells); i++)
 	{
-		// loop thhrough each entry
+		// loop through each entry
 		for (int j=0; j<NUMINDEXEDDIM; j++)
 		{
 			// get adjacent cell index
@@ -694,7 +699,7 @@ __global__ void kernelIndexComputeAdjacentCells(uint64_t * celllDistCalcArr, uin
 	}
 
 	// set number of dist calcs
-	celllDistCalcArr[tid] = numDistCalcs;
+	cellDistCalcArr[tid] = numDistCalcs;
 }
 
 
@@ -726,5 +731,21 @@ __global__ void kernelMapPointToNumDistCalcs(uint64_t * pointDistCalcArr, DTYPE*
 	{
 		// unexpected that point cell is not found
 		printf("\nWARNING: The cell for point %d was not found\n", pointID);
+	}
+}
+
+
+__global__ void kernelConstructRearrangedDatabase( DTYPE * database, const unsigned int DBSIZE, DTYPE * rearrangedDatabaseOut ) {
+	unsigned int tid=threadIdx.x + (blockIdx.x*BLOCKSIZE); 
+
+	if( tid >= DBSIZE ) {
+		return;
+	}
+
+	unsigned int pointID = tid*(GPUNUMDIM);
+
+	// loop through each dimension
+	for( int i=0; i<GPUNUMDIM; i++) {
+		rearrangedDatabaseOut[i*DBSIZE+tid] = database[pointID + i];
 	}
 }
