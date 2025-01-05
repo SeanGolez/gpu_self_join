@@ -512,20 +512,29 @@ if (tid>=*N){
 #if QUERYREORDER==1
 //the point id in the dataset
 unsigned int pointIdx=orderedQueryPntIDs[tid*(*sampleOffset)]; 
+#if REARRANGEDATABASE == 0
 //The offset into the database, taking into consideration the length of each dimension
 unsigned int pointID=(GPUNUMDIM)*pointIdx;
+#endif
 #endif
 
 //If standard execution without reordering the queries by the amount of work
 #if QUERYREORDER==0
 unsigned int pointIdx = tid*(*sampleOffset);
+#if REARRANGEDATABASE == 0
 unsigned int pointID=pointIdx*(GPUNUMDIM);
+#endif
 #endif
 
 //make a local copy of the point
 DTYPE point[GPUNUMDIM];
 for (int i=0; i<GPUNUMDIM; i++){
+	#if REARRANGEDATABASE == 0
 	point[i]=database[pointID+i];	
+	#endif
+	#if REARRANGEDATABASE == 1
+	point[i]=rearrangedDatabase[i*DBSIZE+pointIdx];
+	#endif
 }
 
 unsigned int whichIndex = whichIndexPoints[pointIdx];
