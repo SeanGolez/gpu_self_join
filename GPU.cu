@@ -580,15 +580,17 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 	//////////////////////////////////
 	*/
 
-	unsigned long long estimatedNeighbors=0;	
+	uint64_t estimatedNeighbors=0;	
 	unsigned int numBatches=0;
 	unsigned int GPUBufferSize=0;
+	unsigned int bucket=0;
 
 	double tstartbatchest=omp_get_wtime();
-	estimatedNeighbors=callGPUBatchEst(DBSIZE, dev_database, dev_epsilon, dev_allGrids, dev_allIndexLookupArr, dev_allGridCellLookupArr, dev_allMinArr, dev_allNCells, allNNonEmptyCells, dev_orderedQueryPntIDs, &numBatches, &GPUBufferSize);	
+	// estimatedNeighbors=callGPUBatchEst(DBSIZE, dev_database, dev_epsilon, dev_allGrids, dev_allIndexLookupArr, dev_allGridCellLookupArr, dev_allMinArr, dev_allNCells, allNNonEmptyCells, dev_orderedQueryPntIDs, &numBatches, &GPUBufferSize);
+	estimatedNeighbors = estimateSelectivityHistogram(dev_database, *DBSIZE, *epsilon, &bucket);
 	double tendbatchest=omp_get_wtime();
 	printf("\nTime to estimate batches: %f",tendbatchest - tstartbatchest);
-	printf("\nIn Calling fn: Estimated neighbors: %llu, num. batches: %d, GPU Buffer size: %d",estimatedNeighbors, numBatches,GPUBufferSize);
+	printf("\nIn Calling fn: Estimated neighbors: %lu, num. batches: %d, GPU Buffer size: %d",estimatedNeighbors, numBatches,GPUBufferSize);
 
 	// adjust batch size to account for multiple indexes causing smaller batch sizes
 	unsigned int * numBatchesEachIndex = (unsigned int *)malloc(sizeof(unsigned int) * NUMRANDINDEXES);
@@ -602,6 +604,8 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 			largestNumBatches = numBatchesEachIndex[i];
 		}
 	}
+
+	return;
 
 	//initialize new neighbortable. resize to the number of batches	
 	//Only use this if using unicomp
@@ -2246,3 +2250,323 @@ void populateNDGridIndexAndLookupArrayGPU(std::vector<std::vector <DTYPE> > *NDd
 
 }
 
+uint64_t estimateSelectivityHistogram(DTYPE * dev_database, const unsigned int NPOINTS, const DTYPE epsilon, unsigned int * bucket) 
+{
+
+
+
+	//If we transpose the data
+	#if TRANSPOSEFLAG==1
+	
+	//testing sum of original dataset vs. transposed dataset
+	// DTYPE sumTest=0;
+	// DTYPE * dev_sumTest;
+	// gpuErrchk(cudaMalloc((void**)&dev_sumTest, sizeof(DTYPE)));
+	// gpuErrchk(cudaMemcpy(dev_sumTest, &sumTest, sizeof(DTYPE), cudaMemcpyHostToDevice));
+	
+	// printf("\nSum of original dataset:");
+	// sumDataset<<<1, 1>>>(dev_database, dev_sumTest, NPOINTS);
+	// gpuErrchk(cudaMemcpy(&sumTest, dev_sumTest, sizeof(DTYPE), cudaMemcpyDeviceToHost));	
+	// printf("\nSum of array: %f", sumTest);
+	//end testing
+
+	double tstartTranspose = omp_get_wtime();
+	DTYPE* dev_databaseTmp;
+	//allocate memory on device:
+	gpuErrchk(cudaMalloc((void**)&dev_databaseTmp, sizeof(DTYPE)*GPUNUMDIM*NPOINTS));
+
+	
+	
+
+	const unsigned int TOTALBLOCKSTRANSPOSE=ceil((NPOINTS*GPUNUMDIM)/(1.0*BLOCKSIZE));	
+	printf("\nTotal blocks transpose kernel: %u",TOTALBLOCKSTRANSPOSE);
+
+	transposeDataset<<<TOTALBLOCKSTRANSPOSE,BLOCKSIZE>>>(dev_database, dev_databaseTmp, NPOINTS);
+
+	
+	//for testing transpose of dataset
+	// printf("\n\nSum of transposed dataset (in temp dataset array):");
+	// DTYPE sumTest=0;
+	// DTYPE * dev_sumTest;
+	// gpuErrchk(cudaMalloc((void**)&dev_sumTest, sizeof(DTYPE)));
+	// gpuErrchk(cudaMemcpy(dev_sumTest, &sumTest, sizeof(DTYPE), cudaMemcpyHostToDevice));
+	// sumDataset<<<1, 1>>>(dev_databaseTmp, dev_sumTest, NPOINTS);
+	// gpuErrchk(cudaMemcpy(&sumTest, dev_sumTest, sizeof(DTYPE), cudaMemcpyDeviceToHost));	
+	// printf("\nSum of array: %f", sumTest); 
+	//end for testing
+
+	// sumDataset<<<1, 1>>>(dev_database, dev_sumTest, NPOINTS);
+
+
+
+	// const unsigned int TOTALBLOCKSTRANSPOSE = NPOINTS;
+	// const unsigned int TRANSPOSEBLOCKSIZE = 64;	
+
+	//swap pointers so that dev_database is now the transposed database
+	//and free the original dev_database
+	DTYPE * dev_tmpPtr = dev_database;
+	dev_database=dev_databaseTmp;
+
+	cudaFree(dev_tmpPtr);
+	
+
+
+	double tendTranspose = omp_get_wtime();
+	printf("\nTime to transpose the dataset: %f", tendTranspose - tstartTranspose);
+
+	// for testing transpose of dataset
+	// printf("\n\nSum of transposed dataset (in original array after pointer swap):");
+	// DTYPE sumTest=0;
+	// DTYPE * dev_sumTest;
+	// gpuErrchk(cudaMalloc((void**)&dev_sumTest, sizeof(DTYPE)));
+	// gpuErrchk(cudaMemcpy(dev_sumTest, &sumTest, sizeof(DTYPE), cudaMemcpyHostToDevice));
+	// sumDataset<<<1, 1>>>(dev_database, dev_sumTest, NPOINTS);
+	// gpuErrchk(cudaMemcpy(&sumTest, dev_sumTest, sizeof(DTYPE), cudaMemcpyDeviceToHost));	
+	// printf("\nSum of array: %f", sumTest);
+	// end for testing
+
+
+
+	
+	#endif
+
+
+
+	///////////////////////////////////
+
+	
+	//copy total distance 
+	DTYPE * total_distance=(DTYPE*)malloc(sizeof(DTYPE));
+	*total_distance=0;
+	DTYPE * dev_total_distance=(DTYPE*)malloc(sizeof(DTYPE));
+	
+
+	//allocate total distance on the device
+	gpuErrchk(cudaMalloc((DTYPE**)&dev_total_distance, sizeof(DTYPE)));	
+	//copy
+	gpuErrchk(cudaMemcpy( dev_total_distance, total_distance, sizeof(DTYPE), cudaMemcpyHostToDevice ));
+	
+
+
+	///////////////////////////////////
+	//SET Count KERNEL PARAMETERS
+	///////////////////////////////////
+
+	
+
+	//count values
+	unsigned long long int * cnt;
+	cnt=(unsigned long long int*)malloc(sizeof(unsigned long long int));
+	*cnt=0;
+
+	unsigned long long int * dev_cnt; 
+	dev_cnt=(unsigned long long int*)malloc(sizeof(unsigned long long int));
+	*dev_cnt=0;
+
+	//allocate on the device
+	gpuErrchk(cudaMalloc((unsigned long long int**)&dev_cnt, sizeof(unsigned long long int)));	
+	
+	gpuErrchk(cudaMemcpy( dev_cnt, cnt, sizeof(unsigned long long int), cudaMemcpyHostToDevice ));
+
+	///////////////////////////////////
+	//END SET Count
+	///////////////////////////////////
+
+
+	
+
+
+	///////////////////////////////////
+	//LAUNCH KERNEL
+	///////////////////////////////////
+
+	const int TOTALBLOCKS=ceil((0.001*(NPOINTS))/(1.0*BLOCKSIZE));	
+	printf("\ntotal blocks: %d",TOTALBLOCKS);
+
+
+	//execute kernel	
+	double tkernel_start=omp_get_wtime();
+
+	#if TRANSPOSEFLAG==0
+	kernelEstimateAvgDistBruteForce<<< TOTALBLOCKS, BLOCKSIZE >>>(NPOINTS, dev_cnt, dev_database, dev_total_distance);
+	if ( cudaSuccess != cudaGetLastError() ){
+    	printf( "Error in kernel launch!\n" );
+   }
+   #endif 
+
+ 	#if TRANSPOSEFLAG==1
+   kernelEstimateAvgDistBruteForce_T<<< TOTALBLOCKS, BLOCKSIZE >>>(NPOINTS, dev_cnt, dev_database, dev_total_distance);
+	if ( cudaSuccess != cudaGetLastError() ){
+    	printf( "Error in kernel launch!\n" );
+   } 
+   #endif 
+
+
+    cudaDeviceSynchronize();
+    double tkernel_end=omp_get_wtime();
+    printf("\nTime for kernel only (brute force average dist estimator): %f", tkernel_end - tkernel_start);
+    ///////////////////////////////////
+	//END LAUNCH KERNEL
+	///////////////////////////////////
+    
+
+
+    ///////////////////////////////////
+	//GET RESULT SET
+	///////////////////////////////////
+
+	//The total number of distance calculations
+	gpuErrchk(cudaMemcpy( cnt, dev_cnt, sizeof(unsigned long long int), cudaMemcpyDeviceToHost ));
+	printf("\nGPU: Number of distance calculations: %llu",*cnt);
+	
+	//The total distance
+	gpuErrchk(cudaMemcpy(total_distance, dev_total_distance, sizeof(DTYPE), cudaMemcpyDeviceToHost ));
+	printf("\nGPU: dev_total_distance: %f",*total_distance);
+	
+
+
+	
+	
+
+	const DTYPE avg_distance=*total_distance/(*cnt*1.0);
+	printf("\nAvg distance: %f",avg_distance);
+	// avg_distance=avg_distance*0.20;
+	// printf("\nAvg distance (20 percent of it): %f",avg_distance);
+
+
+	//can't estimate epsilon with arguments based on volumes. Need a k-dist histogram
+	unsigned int nbuckets=10000;
+	
+	const DTYPE bucketWidth = avg_distance/(nbuckets*1.0);
+	
+	//histogram data
+	unsigned int * histogram;
+	histogram=(unsigned int*)calloc(nbuckets,sizeof(unsigned int));
+
+	unsigned int * dev_histogram;
+
+	printf("\nNum buckets: %u, bucketWidth: %0.9f",nbuckets, bucketWidth);
+
+	//alloc on device: histogram
+	gpuErrchk(cudaMalloc( (unsigned int **)&dev_histogram, sizeof(unsigned int )*nbuckets));
+	gpuErrchk(cudaMemcpy( dev_histogram, histogram, sizeof(unsigned int)*nbuckets, cudaMemcpyHostToDevice ));
+	
+
+	//offset for sampling the dataset:
+	//Offset -- the point offset based on 1% of the data for 1M points
+	//don't do 1% of all points otherwise takes too long on large datasets
+
+
+	//original
+	// double offsetRate=0.01;
+	
+
+	// double offsetRate=0.05;
+
+	//original had this code:
+	//Will need to determine the sample size later
+	// if (NPOINTS>=50000)
+	// {
+	// 	double frac=(50000.0/(NPOINTS))*offsetRate;
+	// 	*offset=1.0/frac;
+	// }
+	// else
+	// {
+	// 	*offset=1.0/offsetRate; 
+	// }
+
+	const unsigned int offset=1.0/SAMPLERATE; 
+	printf("\n[Selectivity estimator] Offset: %u", offset);
+
+
+	double tStartKDist=omp_get_wtime();
+
+	const int TOTALBLOCKS2=NPOINTS/offset;	
+	// const int TOTALBLOCKS2=ceil((*N)/300);	
+	printf("\ntotal blocks: %d",TOTALBLOCKS2);
+
+	#if TRANSPOSEFLAG==0
+	kernelKDistBruteForce<<< TOTALBLOCKS2, BLOCKSIZE >>>(NPOINTS, offset, dev_cnt, dev_database, avg_distance, dev_histogram, bucketWidth);
+	#endif
+
+	#if TRANSPOSEFLAG==1
+	kernelKDistBruteForce_T<<< TOTALBLOCKS2, BLOCKSIZE >>>(NPOINTS, offset, dev_cnt, dev_database, avg_distance, dev_histogram, bucketWidth);
+	#endif
+
+
+	///////////////////////////////////
+	//GET RESULT SET SELECTIVITY ESTIMATE
+	///////////////////////////////////
+
+	
+
+	// unsigned int totalInBuckets=0;
+	// unsigned int cumulativeSumToEpsilonBucket=0;
+	// double tstartMemcpyHist=omp_get_wtime();
+	//Copy the histogram
+	// gpuErrchk(cudaMemcpy( histogram, dev_histogram, sizeof(unsigned int)*nbuckets, cudaMemcpyDeviceToHost ));
+	
+	// for (unsigned int i=0; i<nbuckets; i++)
+	// {
+	// 	totalInBuckets+=histogram[i];
+
+	// 	if(i<=bucketContainingEpsilon){
+	// 	cumulativeSumToEpsilonBucket+=histogram[i];
+	// 	}
+	// }
+
+
+	//from the CPU version above
+	// retEstimatedSelectivity = (uint64_t)cumulativeSumToEpsilonBucket*(uint64_t)offset;
+
+	uint64_t retEstimatedSelectivity = cumulativeSumHistogram(dev_histogram, bucketWidth, epsilon, offset);
+
+	double tEndKDist=omp_get_wtime();
+	// printf("\nTime for returning of histogram to the host: %f", tendMemcpyHist - tstartMemcpyHist);
+	printf("\nTime for k-dist and processing histogram kernels: %f", tEndKDist - tStartKDist);
+	
+
+	
+
+	
+
+	
+	
+	///////////////////////////////////
+	//END GET RESULT SET
+	///////////////////////////////////
+
+
+	///////////////////////////////////
+	//FREE MEMORY FROM THE GPU
+	///////////////////////////////////
+	cudaFree(dev_database);
+	cudaFree(dev_total_distance);
+	cudaFree(dev_cnt);
+	cudaFree(dev_histogram);
+	////////////////////////////////////
+
+	return retEstimatedSelectivity;
+
+
+}
+
+
+uint64_t cumulativeSumHistogram(unsigned int * dev_histogram, const DTYPE bucketWidth, const DTYPE epsilon, const unsigned int offset)
+{
+	unsigned int bucketContainingEpsilon = epsilon/bucketWidth;
+	printf("\nTarget epsion is found in the following bucket of the histogram: %u", bucketContainingEpsilon);
+
+	unsigned long long int estimatedTotalResultSetSize=0;
+	unsigned long long int * dev_estimatedTotalResultSetSize;
+	gpuErrchk(cudaMalloc((unsigned long long int**)&dev_estimatedTotalResultSetSize, sizeof(unsigned long long int)));	
+	gpuErrchk(cudaMemcpy(dev_estimatedTotalResultSetSize, &estimatedTotalResultSetSize, sizeof(unsigned long long int), cudaMemcpyHostToDevice));
+	computeSelectivityEstimateFromHistogram<<<1, 1024>>>(epsilon, dev_histogram, bucketWidth, dev_estimatedTotalResultSetSize);
+	gpuErrchk(cudaMemcpy(&estimatedTotalResultSetSize, dev_estimatedTotalResultSetSize, sizeof(unsigned long long int), cudaMemcpyDeviceToHost));
+
+	uint64_t retEstimatedSelectivity = (uint64_t)estimatedTotalResultSetSize*(uint64_t)offset;
+	printf("\nEstimated result set size from GPU: %lu", retEstimatedSelectivity);		
+	cudaFree(dev_estimatedTotalResultSetSize);
+
+	return retEstimatedSelectivity;
+}

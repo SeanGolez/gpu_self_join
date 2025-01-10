@@ -716,3 +716,527 @@ __global__ void kernelMapPointToNumDistCalcs(uint64_t * pointDistCalcArr, DTYPE*
 		printf("\nWARNING: The cell for point %d was not found\n", pointID);
 	}
 }
+
+
+//transform from original row-major dataset to transposed dataset coords
+__forceinline__ __device__ uint64_t coords_T(uint64_t input, uint64_t NPOINTS)
+{
+
+	uint64_t outputRow = input%NPOINTS;	
+	uint64_t outputCol = input/NPOINTS;
+	// return outputRow*NPOINTS+outputCol;
+
+	//XXX testing
+	return outputCol*NPOINTS+outputRow;
+}
+
+
+//transposes the dataset using one thread per output element (NPOINTS*GPUNUMDIM threads)
+__global__ void transposeDataset(DTYPE * dataset, DTYPE * transposedDataset, const unsigned int NPOINTS)
+{
+	uint64_t tid=threadIdx.x+(blockIdx.x*blockDim.x); 
+
+	if(tid>=(NPOINTS*GPUNUMDIM)){
+		return;
+	}
+
+	// uint64_t outputRow = tid%NPOINTS;	
+	// uint64_t outputCol = tid/NPOINTS;
+
+	// transposedDataset[outputRow*NPOINTS+outputCol] = dataset[tid];
+
+	uint64_t inputRow = tid/NPOINTS;	
+	uint64_t inputCol = tid%NPOINTS;
+
+	transposedDataset[tid] = dataset[inputRow*NPOINTS+inputCol];
+
+
+
+
+	//One block does a copy of an individual data point
+	//Did not validate
+	
+	// unsigned int tid=threadIdx.x+(blockIdx.x*BLOCKSIZE); 
+
+	// if(tid>=NPOINTS){
+	// 	return;
+	// }
+
+	
+	// //One block does a copy of an individual data point			
+	// for (unsigned int i=0; i<GPUNUMDIM; i+=blockDim.x){
+
+	// 	uint64_t outputRow = (blockIdx.x*GPUNUMDIM)+i+(threadIdx.x%NPOINTS);	
+	// 	uint64_t outputCol = (blockIdx.x*GPUNUMDIM)+i+(threadIdx.x/NPOINTS);
+
+	// 	if((i+threadIdx.x)<GPUNUMDIM){
+	// 		transposedDataset[outputRow*NPOINTS+outputCol] = dataset[(blockIdx.x*GPUNUMDIM)+i+threadIdx.x];
+	// 	}
+	// }
+
+
+}
+
+
+//Kernel brute forces to estimate the average distance between points
+__global__ void kernelEstimateAvgDistBruteForce_T(const unsigned int NPOINTS, 
+	unsigned long long int * cnt, DTYPE* database, DTYPE * total_distance)
+{
+//1% of the points for searching	
+uint64_t tid=(threadIdx.x+ (blockIdx.x*blockDim.x))*1000; 
+
+if (tid>=NPOINTS){
+	return;
+}
+
+
+
+const uint64_t dataOffset=tid*GPUNUMDIM;
+uint64_t idxA=0;
+uint64_t idxB=0;
+DTYPE runningDist=0;
+//compare my point to every other point sampled - 0.1%
+for (uint64_t i=0+threadIdx.x; i<(NPOINTS); i+=1000)
+{
+	runningDist=0;
+	for (uint64_t j=0; j<GPUNUMDIM; j++){
+		idxA=coords_T((i*GPUNUMDIM)+j, NPOINTS);
+		idxB=coords_T(dataOffset+j, NPOINTS);
+		runningDist+=(database[idxA]-database[idxB])*(database[idxA]-database[idxB]);
+	}
+
+	runningDist=sqrt(runningDist);
+
+	atomicAdd(cnt, (unsigned long long int)1);
+	atomicAdd(total_distance, (DTYPE)runningDist);
+
+
+	// //if within epsilon:
+	// if ((sqrt(runningDist))<=(*epsilon)){
+		
+		// unsigned int idx=atomicInc(cnt, uint64_t(1));
+		// pointIDKey[idx]=tid;
+		// pointInDistVal[idx]=i;
+		// }
+}
+
+
+return;
+}
+
+
+
+
+//Kernel brute forces to estimate the average distance between points
+__global__ void kernelEstimateAvgDistBruteForce(const unsigned int NPOINTS, 
+	unsigned long long int * cnt, DTYPE* database, DTYPE * total_distance)
+{
+//1% of the points for searching	
+unsigned int tid=(threadIdx.x+ (blockIdx.x*blockDim.x))*1000; 
+
+if (tid>=NPOINTS){
+	return;
+}
+
+
+
+const unsigned int dataOffset=tid*GPUNUMDIM;
+uint64_t idxA=0;
+uint64_t idxB=0;
+DTYPE runningDist=0;
+//compare my point to every other point sampled - 0.1%
+for (int i=0+threadIdx.x; i<(NPOINTS); i+=1000)
+{
+	runningDist=0;
+	for (unsigned int j=0; j<GPUNUMDIM; j++){
+		idxA=(i*GPUNUMDIM)+j;
+		idxB=dataOffset+j;
+		runningDist+=(database[idxA]-database[idxB])*(database[idxA]-database[idxB]);
+	}
+
+	runningDist=sqrt(runningDist);
+
+	atomicAdd(cnt, (unsigned long long int)1);
+	atomicAdd(total_distance, (DTYPE)runningDist);
+
+
+	// //if within epsilon:
+	// if ((sqrt(runningDist))<=(*epsilon)){
+		
+		// unsigned int idx=atomicInc(cnt, uint64_t(1));
+		// pointIDKey[idx]=tid;
+		// pointInDistVal[idx]=i;
+		// }
+}
+
+
+return;
+}
+
+
+__device__ void loadPointIntoSM_T(DTYPE * database, unsigned int dataOffset, DTYPE * originPoint, const unsigned int NPOINTS)
+{
+
+	for(unsigned int i=0; i<GPUNUMDIM; i+=blockDim.x){
+
+		unsigned int SMIdx = i+threadIdx.x;
+		if(SMIdx<GPUNUMDIM){
+		unsigned int originIdx = dataOffset+SMIdx;
+		uint64_t originIdxT = coords_T(originIdx, NPOINTS);
+		originPoint[SMIdx] = database[originIdxT];
+		}
+	}
+
+	__syncthreads();
+
+}
+
+
+__device__ void loadPointIntoSM(DTYPE * database, unsigned int dataOffset, DTYPE * originPoint)
+{
+
+	for(unsigned int i=0; i<GPUNUMDIM; i+=blockDim.x){
+
+		unsigned int SMIdx = i+threadIdx.x;
+		if(SMIdx<GPUNUMDIM){
+		unsigned int originIdx = dataOffset+SMIdx;
+		originPoint[SMIdx] = database[originIdx];
+		}
+	}
+
+	__syncthreads();
+
+}
+
+
+__device__ void zeroRunningDistArray(DTYPE * runningDist){
+	#pragma unroll
+	for (int i=0; i<ILP; i++){
+		runningDist[i]=0;
+	}
+}
+
+
+//Kernel brute force to estimate the epsilon value needed to get the k points 
+//makes a histogram of neighbors vs distance
+//Gets all the neighbors for a selected few points
+
+//avg_distance -- do not include distances passed this one, which is the average distance between two
+//points in a dataset (much too large to be useful)
+//histogram -- array data in buckets
+//bucket_width -- determines which index the distance falls into
+//offset- sample each dataset with a variable number of points based on the offset
+__global__ void kernelKDistBruteForce(const unsigned int NPOINTS, const unsigned int offset,
+	unsigned long long int * cnt, DTYPE* database, const DTYPE avg_distance, unsigned int * histogram, const DTYPE bucket_width)
+{
+//~1% of the points for searching	
+
+//each block works on the same point
+unsigned int tid=(blockIdx.x)*offset;
+
+if (tid>=NPOINTS){
+	return;
+}
+
+//Offset into the database for the origin point
+unsigned int dataOffset=tid*GPUNUMDIM;
+
+//Store the point for the block in shared memory
+__shared__ DTYPE originPoint[GPUNUMDIM];
+loadPointIntoSM(database, dataOffset, originPoint);
+
+
+
+//If ILP, allocate an array
+#if ILP>1
+DTYPE runningDist[ILP];
+//without ILP allocate a scalar
+#else
+DTYPE runningDist=0;
+#endif
+
+//used for sampling when comparing the points to all other points in the database
+//This can be tuned for performance
+
+//original in KNNSJ paper:
+// int samplePnts=8;
+
+//Changed to 1 when converting over code for Asa
+const unsigned int samplePnts=1;
+
+
+bool breakFlag=0;
+//compare my point to every samplePnts block of points
+for (int i=0; i<NPOINTS; i+=BLOCKSIZE*samplePnts){
+	
+	
+	
+	//Without ILP
+	#if ILP==0 || ILP==1
+	
+	runningDist=0;
+	//if we break due to short circuiting
+	breakFlag=0;
+
+	int pntID=i+threadIdx.x;
+	for (int j=0; j<GPUNUMDIM; j++){
+		//Original --- global memory only
+		// runningDist+=(database[(pntID*GPUNUMDIM)+j]-database[dataOffset+j])*(database[(pntID*GPUNUMDIM)+j]-database[dataOffset+j]);
+		//Shared memory origin point
+		runningDist+=(database[(pntID*GPUNUMDIM)+j]-originPoint[j])*(database[(pntID*GPUNUMDIM)+j]-originPoint[j]);
+		
+		
+		if (sqrt(runningDist)>avg_distance){
+			breakFlag=1;
+			break;
+		}
+	}
+
+	//Only attempt adding to histogram if the loop above didn't break
+	if(breakFlag==0){
+		runningDist=sqrt(runningDist);
+
+		//let a point count itself 
+		if (runningDist<avg_distance){
+			unsigned int bucket=runningDist/bucket_width;
+			atomicAdd(histogram+bucket, (unsigned int)1*samplePnts);
+		}
+	}
+
+	#endif
+
+	//With ILP optimization
+	#if ILP>1
+	
+	
+	zeroRunningDistArray(runningDist);
+	//if we break due to short circuiting
+	breakFlag=0;
+
+	int pntID=i+threadIdx.x;
+	for (int l=0; l<GPUNUMDIM; l+=ILP){
+
+			#pragma unroll
+			for (int j=0; j<ILP && (l+j)<GPUNUMDIM; j++){
+		 	  //original -- global memory only
+			  //runningDist[j]+=(database[(pntID*GPUNUMDIM)+j+l]-database[dataOffset+j+l])*(database[(pntID*GPUNUMDIM)+j+l]-database[dataOffset+j+l]);
+				
+				//Shared memory origin point
+				runningDist[j]+=(database[(pntID*GPUNUMDIM)+j+l]-originPoint[j+l])*(database[(pntID*GPUNUMDIM)+j+l]-originPoint[j+l]);
+			}
+
+			//Short circuit
+			for(int j=1; j<ILP; j++) {
+				runningDist[0] += runningDist[j];
+				runningDist[j]=0;
+			}
+		
+			if (sqrt(runningDist[0])>avg_distance){
+				breakFlag=1;
+				break;
+			}
+		
+	}
+
+	//Only attempt adding to histogram if the loop above didn't break
+	if(breakFlag==0){
+		runningDist[0]=sqrt(runningDist[0]);
+
+		//let a point count itself 
+		if (runningDist[0]<avg_distance){
+			unsigned int bucket=runningDist[0]/bucket_width;
+			atomicAdd(histogram+bucket, (unsigned int)1*samplePnts);
+		}
+	}
+	#endif
+
+} //end loop over points
+
+
+return;
+}
+
+
+//Kernel brute force to estimate the epsilon value needed to get the k points 
+//makes a histogram of neighbors vs distance
+//Gets all the neighbors for a selected few points
+
+//avg_distance -- do not include distances passed this one, which is the average distance between two
+//points in a dataset (much too large to be useful)
+//histogram -- array data in buckets
+//bucket_width -- determines which index the distance falls into
+//offset- sample each dataset with a variable number of points based on the offset
+__global__ void kernelKDistBruteForce_T(const unsigned int NPOINTS, const unsigned int offset,
+	unsigned long long int * cnt, DTYPE* database, const DTYPE avg_distance, unsigned int * histogram, const DTYPE bucket_width)
+{
+//~1% of the points for searching	
+
+//each block works on the same point
+unsigned int tid=(blockIdx.x)*offset;
+
+if (tid>=NPOINTS){
+	return;
+}
+
+//Offset into the database for the origin point
+unsigned int dataOffset=tid*GPUNUMDIM;
+
+//Store the point for the block in shared memory
+__shared__ DTYPE originPoint[GPUNUMDIM];
+loadPointIntoSM_T(database, dataOffset, originPoint, NPOINTS);
+
+
+
+//If ILP, allocate an array
+#if ILP>1
+DTYPE runningDist[ILP];
+//without ILP allocate a scalar
+#else
+DTYPE runningDist=0;
+#endif
+
+//used for sampling when comparing the points to all other points in the database
+//This can be tuned for performance
+
+//original in KNNSJ paper:
+// int samplePnts=8;
+
+//Changed to 1 when converting over code for Asa
+const unsigned int samplePnts=1;
+
+
+bool breakFlag=0;
+
+uint64_t idxA=0;
+
+
+//compare my point to every samplePnts block of points
+for (unsigned int i=0; i<NPOINTS; i+=BLOCKSIZE*samplePnts){
+	
+	
+	
+	//Without ILP
+	#if ILP==0 || ILP==1
+
+	// uint64_t idxB=0;
+	
+	runningDist=0;
+	//if we break due to short circuiting
+	breakFlag=0;
+
+	unsigned int pntID=i+threadIdx.x;
+	for (unsigned int j=0; j<GPUNUMDIM; j++){
+		idxA = coords_T((pntID*GPUNUMDIM)+j, NPOINTS);
+		// idxB = coords_T(dataOffset+j, NPOINTS);
+		//Original --- global memory only
+		// runningDist+=(database[idxA]-database[idxB])*(database[idxA]-database[idxB]);
+		//Shared memory origin point
+		// runningDist+=(database[(pntID*GPUNUMDIM)+j]-originPoint[j])*(database[(pntID*GPUNUMDIM)+j]-originPoint[j]);
+		runningDist+=(database[idxA]-originPoint[j])*(database[idxA]-originPoint[j]);
+		
+		
+		if (sqrt(runningDist)>avg_distance){
+			breakFlag=1;
+			break;
+		}
+	}
+
+	//Only attempt adding to histogram if the loop above didn't break
+	if(breakFlag==0){
+		runningDist=sqrt(runningDist);
+
+		//let a point count itself 
+		if (runningDist<avg_distance){
+			unsigned int bucket=runningDist/bucket_width;
+			atomicAdd(histogram+bucket, (unsigned int)1*samplePnts);
+		}
+	}
+
+	#endif
+
+	//With ILP optimization
+	#if ILP>1
+	
+	
+	zeroRunningDistArray(runningDist);
+	//if we break due to short circuiting
+	breakFlag=0;
+
+	unsigned int pntID=i+threadIdx.x;
+	for (unsigned int l=0; l<GPUNUMDIM; l+=ILP){
+
+			#pragma unroll
+			for (unsigned int j=0; j<ILP && (l+j)<GPUNUMDIM; j++){
+				idxA = coords_T((pntID*GPUNUMDIM)+j+l, NPOINTS);
+				// idxB = coords_T(dataOffset+j+l, NPOINTS);
+		 	  //original -- global memory only
+			  // runningDist[j]+=(database[idxA]-database[idxB])*(database[idxA]-database[idxB]);
+				
+				//Shared memory origin point
+				// runningDist[j]+=(database[(pntID*GPUNUMDIM)+j+l]-originPoint[j+l])*(database[(pntID*GPUNUMDIM)+j+l]-originPoint[j+l]);
+				runningDist[j]+=(database[idxA]-originPoint[j+l])*(database[idxA]-originPoint[j+l]);
+			}
+
+			//Short circuit
+			for(int j=1; j<ILP; j++) {
+				runningDist[0] += runningDist[j];
+				runningDist[j]=0;
+			}
+		
+			if (sqrt(runningDist[0])>avg_distance){
+				breakFlag=1;
+				break;
+			}
+		
+	}
+
+	//Only attempt adding to histogram if the loop above didn't break
+	if(breakFlag==0){
+		runningDist[0]=sqrt(runningDist[0]);
+
+		//let a point count itself 
+		if (runningDist[0]<avg_distance){
+			unsigned int bucket=runningDist[0]/bucket_width;
+			atomicAdd(histogram+bucket, (unsigned int)1*samplePnts);
+		}
+	}
+	#endif
+
+} //end loop over points
+
+
+return;
+}
+
+
+//Only uses one block to perform a reduction on the histogram
+__global__ void computeSelectivityEstimateFromHistogram(const DTYPE epsilon, unsigned int * histogram, const DTYPE bucket_width, unsigned long long int * estimatedTotalResultSetSize)
+{
+
+	__shared__ unsigned long long int tmpSum;
+	if(threadIdx.x==0){
+		tmpSum=0;
+	}
+	__syncthreads();
+
+	unsigned long long int mySum=0;
+
+	unsigned int bucketContainingEpsilon = epsilon/bucket_width;
+
+	for (unsigned int i=0; i<=bucketContainingEpsilon; i+=blockDim.x)
+	{
+		unsigned int myIdx = i+threadIdx.x;
+		if(myIdx<=bucketContainingEpsilon)
+		{
+			mySum+=histogram[myIdx];			
+		}
+		
+	}
+
+	atomicAdd(&tmpSum, mySum);
+	__syncthreads();
+	if(threadIdx.x==0){
+	*estimatedTotalResultSetSize = tmpSum;		
+	}
+
+}

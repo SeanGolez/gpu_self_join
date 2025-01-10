@@ -17,18 +17,22 @@
 #define BLOCKSIZE 256
  
 //Number of dimensions of the data (n)
-#define GPUNUMDIM 3
+#define GPUNUMDIM 18
 
 //Number of indexed dimensions (k)
 #define NUMINDEXEDDIM 3
 
 //Number of random indexes to generate (at least 1)
-#define NUMRANDINDEXES 5
+#define NUMRANDINDEXES 1
 
 //data type of the input dataset (float or double)
 // cmp3101 should use float!
 // a100 on monsoon can do either
 #define DTYPE float
+
+//transpose the input data for coalesced memory accesses
+//0- not transposed or 1- transposed
+#define TRANSPOSEFLAG 1
 
 ///////////////////////
 // Random indexing types

@@ -45,3 +45,7 @@ void constructNeighborTableKeyValueWithPtrsBatchMaskArray(int * pointIDKey, int 
 //Sort the queries by their workload based on the number of points in the cell
 //From hybrid KNN paper in GPGPU'19 
 void computeWorkDifficulty(unsigned int * outputOrderedQueryPntIDs, struct gridCellLookup * gridCellLookupArr, unsigned int * nNonEmptyCells, unsigned int * indexLookupArr, struct grid * index);
+
+uint64_t estimateSelectivityHistogram(DTYPE * NDdataPoints, const unsigned int NPOINTS, const DTYPE epsilon, unsigned int * bucket);
+
+uint64_t cumulativeSumHistogram(unsigned int * dev_histogram, const DTYPE bucketWidth, const DTYPE epsilon, const unsigned int offset);
