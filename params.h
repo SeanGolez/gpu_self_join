@@ -23,7 +23,10 @@
 #define NUMINDEXEDDIM 3
 
 //Number of random indexes to generate (at least 1)
-#define NUMRANDINDEXES 5
+#define NUMRANDINDEXES 1
+
+//Number of random rotations to generate (at least 1)
+#define NUMRANDROTAIONS 1
 
 //data type of the input dataset (float or double)
 // cmp3101 should use float!
@@ -81,7 +84,7 @@
 
 //used to see how many point comparisons and grid cell searches
 //For performance evaluation purposes, and not when timing the algorithm
-#define COUNTMETRICS 0
+#define COUNTMETRICS 1
 
 //Data type for the above
 #define CTYPE unsigned long long

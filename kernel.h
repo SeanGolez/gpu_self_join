@@ -36,3 +36,6 @@ __global__ void kernelInitEnumerateDB(unsigned int * databaseVal, unsigned int *
 __global__ void kernelIndexComputeAdjacentCells(uint64_t * cellDistCalcArr, uint64_t * uniqueCellArr, uint64_t * cellNumPointsArr, unsigned int * nCells, unsigned int * nNonEmptyCells, int *incrementors, unsigned int * nAdjCells);
 
 __global__ void kernelMapPointToNumDistCalcs(uint64_t * pointDistCalcArr, DTYPE* database, unsigned int *N, DTYPE* epsilon, DTYPE* minArr, unsigned int * nCells, uint64_t *cellDistCalcArr,  uint64_t * uniqueCellArr, unsigned int * nNonEmptyCells);
+
+
+__global__ void kernelPairwiseDatabaseRotation( DTYPE * database, unsigned int *N, DTYPE * theta, unsigned int * dimPair );

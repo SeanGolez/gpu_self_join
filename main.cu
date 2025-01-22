@@ -146,6 +146,47 @@ int main(int argc, char *argv[])
 	printf("\n*****************\n");
 	double totalTime = 0;
 
+	/*
+	// Print the og
+	printf("\nOriginal Database:\n");
+    for (const auto& row : NDdataPoints) {
+        for (const auto& elem : row) {
+            cout << elem << " ";
+        }
+        cout << endl;
+    }
+
+	cout << endl;
+	*/
+
+	std::vector<std::vector<std::vector<DTYPE>>> allRotatedNDdataPoints;
+	
+	allRotatedNDdataPoints.emplace_back(NDdataPoints);
+	
+	// generate random point rotations
+	for( int i = 0; i < NUMRANDROTAIONS; i++ ) {
+		std::vector<std::vector<DTYPE>> rotatedNDdataPoints;
+		rotateOnGPU(&NDdataPoints, &rotatedNDdataPoints);
+		
+		/*
+		// Print the new
+		printf("\nRotated Database:\n");
+		for (const auto& row : rotatedNDdataPoints) {
+			for (const auto& elem : row) {
+				cout << elem << " ";
+			}
+			cout << endl;
+		}
+
+		cout << endl;
+		*/
+
+		allRotatedNDdataPoints.emplace_back(rotatedNDdataPoints);
+	}
+
+
+	NDdataPoints = allRotatedNDdataPoints[0];
+
 
 	double timeReorderByDimVariance = 0;
 #if REORDER == 1
@@ -155,6 +196,7 @@ int main(int argc, char *argv[])
 	timeReorderByDimVariance = reorder_end - reorder_start;
 	printf("\nTime to reorder: %f", timeReorderByDimVariance);
 #endif
+
 
 	// inititalize arrays
 	std::vector<std::vector<workArrayPnt>> allTotalPointsWork;

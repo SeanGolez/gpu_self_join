@@ -46,3 +46,6 @@ void constructNeighborTableKeyValueWithPtrsBatchMaskArray(int * pointIDKey, int 
 //Sort the queries by their workload based on the number of points in the cell
 //From hybrid KNN paper in GPGPU'19 
 void computeWorkDifficulty(unsigned int * outputOrderedQueryPntIDs, struct gridCellLookup * gridCellLookupArr, unsigned int * nNonEmptyCells, unsigned int * indexLookupArr, struct grid * index);
+
+
+void rotateOnGPU(std::vector<std::vector<DTYPE>> * NDdataPoints, std::vector<std::vector<DTYPE>> * rotatedNDdataPoints);

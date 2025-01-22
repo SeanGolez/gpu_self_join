@@ -728,3 +728,22 @@ __global__ void kernelMapPointToNumDistCalcs(uint64_t * pointDistCalcArr, DTYPE*
 		printf("\nWARNING: The cell for point %d was not found\n", pointID);
 	}
 }
+
+__global__ void kernelPairwiseDatabaseRotation( DTYPE * database, unsigned int *N, DTYPE * theta, unsigned int * dimPair ) {
+	unsigned int tid=threadIdx.x+ (blockIdx.x*BLOCKSIZE);
+
+	if (tid>=*N){
+		return;
+	}
+
+	unsigned int pointID=tid*(GPUNUMDIM);
+
+	DTYPE dim_0 = database[pointID + dimPair[0]];
+	DTYPE dim_1 = database[pointID + dimPair[1]];
+
+	DTYPE new_dim_0 = (dim_0 * cos(*theta)) - (dim_1 * sin(*theta));
+	DTYPE new_dim_1 = (dim_0 * sin(*theta)) + (dim_1 * cos(*theta));
+
+	database[pointID + dimPair[0]] = new_dim_0;
+	database[pointID + dimPair[1]] = new_dim_1;
+}

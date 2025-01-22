@@ -10,6 +10,7 @@
 #include "omp.h"
 #include <queue>
 #include <unistd.h>
+#include <random>
 
 //thrust
 #include <thrust/host_vector.h>
@@ -686,7 +687,6 @@ void distanceTableNDGridBatches(std::vector<std::vector<DTYPE> > * NDdataPoints,
 	free(stopGridPtrs);
 	free(startIndexPtrs);
 
-	return;
 
 	//initialize new neighbortable. resize to the number of batches	
 	//Only use this if using unicomp
@@ -2345,3 +2345,144 @@ void populateNDGridIndexAndLookupArrayGPU(std::vector<std::vector <DTYPE> > *NDd
 
 }
 
+
+void rotateOnGPU(std::vector<std::vector<DTYPE>> * NDdataPoints, std::vector<std::vector<DTYPE>> * rotatedNDdataPoints) {
+	// define random engine
+    std::random_device rd;
+	// initialize generator
+    std::mt19937 gen(rd());
+	// produce random float within [0, 2pi)
+	std::uniform_real_distribution<> dis(DTYPE(0), 2 * M_PI);
+
+	//CUDA error code:
+	cudaError_t errCode;
+
+	///////////////////////////////////
+	//COPY THE DATABASE TO THE GPU
+	///////////////////////////////////
+
+	unsigned int * DBSIZE;
+	DBSIZE=(unsigned int*)malloc(sizeof(unsigned int));
+	*DBSIZE=NDdataPoints->size();
+	
+	printf("\nDBSIZE is: %u",*DBSIZE);cout.flush();
+
+	unsigned int * dev_DBSIZE;
+
+	//allocate memory on device:
+	errCode=cudaMalloc( (void**)&dev_DBSIZE, sizeof(unsigned int));		
+	if(errCode != cudaSuccess) {
+	cout << "\nError: database N -- error with code " << errCode << endl; cout.flush(); 
+	}
+
+
+	//copy database size to the device
+	errCode=cudaMemcpy(dev_DBSIZE, DBSIZE, sizeof(unsigned int), cudaMemcpyHostToDevice);	
+	if(errCode != cudaSuccess) {
+	cout << "\nError: database size Got error with code " << errCode << endl; 
+	}
+	
+	DTYPE* database= (DTYPE*)malloc(sizeof(DTYPE)*(*DBSIZE)*(GPUNUMDIM));  
+	
+	DTYPE* dev_database;  
+		
+	//allocate memory on device:
+	errCode=cudaMalloc( (void**)&dev_database, sizeof(DTYPE)*(GPUNUMDIM)*(*DBSIZE));		
+	if(errCode != cudaSuccess) {
+	cout << "\nError: database alloc -- error with code " << errCode << endl; cout.flush(); 
+	}
+
+
+	//copy the database from the ND vector to the array:
+	for (int i=0; i<(*DBSIZE); i++){
+		std::copy((*NDdataPoints)[i].begin(), (*NDdataPoints)[i].end(), database+(i*(GPUNUMDIM)));
+	}
+
+
+	//copy database to the device
+	errCode=cudaMemcpy(dev_database, database, sizeof(DTYPE)*(GPUNUMDIM)*(*DBSIZE), cudaMemcpyHostToDevice);	
+	if(errCode != cudaSuccess) {
+	cout << "\nError: database2 Got error with code " << errCode << endl; 
+	}
+
+	///////////////////////////////////
+	//END COPY THE DATABASE TO THE GPU
+	///////////////////////////////////
+
+	///////////////////////////////////
+	//COPY DIMENSION PAIR TO GPU
+	///////////////////////////////////
+	unsigned int * dimPair = (unsigned int *)malloc(sizeof(unsigned int) * 2);
+
+	// use first two dimensions for now
+	dimPair[0] = 0;
+	dimPair[1] = 1;
+
+	unsigned int * dev_dimPair;
+	//allocate memory on device:
+	errCode=cudaMalloc( (void**)&dev_dimPair, sizeof(unsigned int) * 2);		
+	if(errCode != cudaSuccess) {
+	cout << "\nError: dimPair -- error with code " << errCode << endl; cout.flush(); 
+	}
+
+	//copy theta to the device
+	errCode=cudaMemcpy(dev_dimPair, dimPair, sizeof(unsigned int) * 2, cudaMemcpyHostToDevice);	
+	if(errCode != cudaSuccess) {
+	cout << "\nError: dimPair Got error with code " << errCode << endl; 
+	}
+	///////////////////////////////////
+	//END COPY DIMENSION PAIR TO GPU
+	///////////////////////////////////
+
+	///////////////////////////////////
+	//COPY THETA TO GPU
+	///////////////////////////////////
+	DTYPE theta = dis(gen);
+
+	printf("\nTheta: %f", theta);
+
+	DTYPE * dev_theta;
+	//allocate memory on device:
+	errCode=cudaMalloc( (void**)&dev_theta, sizeof(DTYPE));		
+	if(errCode != cudaSuccess) {
+	cout << "\nError: theta -- error with code " << errCode << endl; cout.flush(); 
+	}
+
+	//copy theta to the device
+	errCode=cudaMemcpy(dev_theta, &theta, sizeof(DTYPE), cudaMemcpyHostToDevice);	
+	if(errCode != cudaSuccess) {
+	cout << "\nError: theta Got error with code " << errCode << endl; 
+	}
+	///////////////////////////////////
+	//END COPY THETA TO GPU
+	///////////////////////////////////
+
+
+	const int TOTALBLOCKS=ceil((1.0*(*DBSIZE))/(1.0*BLOCKSIZE));	
+	printf("\ntotal blocks: %d",TOTALBLOCKS);
+
+	kernelPairwiseDatabaseRotation <<< TOTALBLOCKS, BLOCKSIZE >>> (dev_database, dev_DBSIZE, dev_theta, dev_dimPair);
+
+	DTYPE* rotatedDatabase= (DTYPE*)malloc(sizeof(DTYPE)*(*DBSIZE)*(GPUNUMDIM));  
+
+	// copy new rotated database to host
+	cudaMemcpy(rotatedDatabase, dev_database, sizeof(DTYPE)*(GPUNUMDIM)*(*DBSIZE), cudaMemcpyDeviceToHost);
+	
+	// TODO: THIS IS WRONG
+	for (int i = 0; i < *DBSIZE; i++) {
+		std::vector<DTYPE> tmpPoint;
+		for( int j = 0; j < GPUNUMDIM; j++ ) {
+			tmpPoint.emplace_back(rotatedDatabase[i * GPUNUMDIM + j]);
+		}
+		(*rotatedNDdataPoints).emplace_back(tmpPoint);
+    }
+
+	free(dimPair);
+	free(database);
+	free(rotatedDatabase);
+
+	cudaFree(dev_DBSIZE);
+	cudaFree(dev_database);
+	cudaFree(dev_theta);
+	cudaFree(dev_dimPair);
+}
