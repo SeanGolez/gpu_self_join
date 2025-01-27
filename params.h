@@ -26,7 +26,10 @@
 #define NUMRANDINDEXES 1
 
 //Number of random rotations to generate (at least 1)
-#define NUMRANDROTAIONS 1
+#define NUMRANDROTAIONS 3
+
+// Number of dimension pairs to rotation
+#define NUMPAIRROTATIONS 3
 
 //data type of the input dataset (float or double)
 // cmp3101 should use float!

@@ -522,13 +522,14 @@ unsigned int pointIdx = tid*(*sampleOffset);
 unsigned int pointID=pointIdx*(GPUNUMDIM);
 #endif
 
+unsigned int whichIndex = whichIndexPoints[pointIdx];
+unsigned int whichDatabase = whichIndex % NUMRANDROTAIONS;
+
 //make a local copy of the point
 DTYPE point[GPUNUMDIM];
 for (int i=0; i<GPUNUMDIM; i++){
-	point[i]=database[pointID+i];	
+	point[i]=database[(whichDatabase * DBSIZE * GPUNUMDIM) + pointID+i];
 }
-
-unsigned int whichIndex = whichIndexPoints[pointIdx];
 
 //calculate the coords of the Cell for the point
 //and the min/max ranges in each dimension
@@ -589,7 +590,7 @@ for (int i=0; i<NUMINDEXEDDIM; i++){
 				
 
 				for (int l=0; l<GPUNUMDIM; l++){
-				runningTotalDist+=(database[dataIdx*GPUNUMDIM+l]-point[l])*(database[dataIdx*GPUNUMDIM+l]-point[l]);
+				runningTotalDist+=(database[(whichDatabase * DBSIZE * GPUNUMDIM) + dataIdx*GPUNUMDIM+l]-point[l])*(database[(whichDatabase * DBSIZE * GPUNUMDIM) + dataIdx*GPUNUMDIM+l]-point[l]);
 				}
 
 
