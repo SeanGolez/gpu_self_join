@@ -114,21 +114,21 @@ unsigned long long callGPUBatchEst(unsigned int DBSIZE, DTYPE* dev_database, DTY
 	////////////
 
 	unsigned int * dev_cnt_batchEst; 
-	dev_cnt_batchEst=(unsigned int*)malloc(sizeof(unsigned int) * NUMRANDINDEXES * NUMRANDROTAIONS);
+	dev_cnt_batchEst=(unsigned int*)malloc(sizeof(unsigned int) * NUMRANDINDEXES * NUMRANDROTATIONS);
 
 	unsigned int * cnt_batchEst; 
-	cnt_batchEst=(unsigned int*)malloc(sizeof(unsigned int) * NUMRANDINDEXES * NUMRANDROTAIONS);
-	for( unsigned int i=0; i<NUMRANDINDEXES * NUMRANDROTAIONS; i++) {
+	cnt_batchEst=(unsigned int*)malloc(sizeof(unsigned int) * NUMRANDINDEXES * NUMRANDROTATIONS);
+	for( unsigned int i=0; i<NUMRANDINDEXES * NUMRANDROTATIONS; i++) {
 		cnt_batchEst[i]=0;
 	}
 	
 
 
 	//allocate on the device
-	gpuErrchk(cudaMalloc((void**)&dev_cnt_batchEst, sizeof(unsigned int) * NUMRANDINDEXES * NUMRANDROTAIONS));
+	gpuErrchk(cudaMalloc((void**)&dev_cnt_batchEst, sizeof(unsigned int) * NUMRANDINDEXES * NUMRANDROTATIONS));
 
 	//copy cnt to device 
-	gpuErrchk(cudaMemcpy( dev_cnt_batchEst, cnt_batchEst, sizeof(unsigned int) * NUMRANDINDEXES * NUMRANDROTAIONS, cudaMemcpyHostToDevice));
+	gpuErrchk(cudaMemcpy( dev_cnt_batchEst, cnt_batchEst, sizeof(unsigned int) * NUMRANDINDEXES * NUMRANDROTATIONS, cudaMemcpyHostToDevice));
 
 	//////////////////
 	//SAMPLE OFFSET - TO SAMPLE THE DATA TO ESTIMATE THE TOTAL NUMBER OF KEY VALUE PAIRS
@@ -201,13 +201,13 @@ unsigned long long callGPUBatchEst(unsigned int DBSIZE, DTYPE* dev_database, DTY
 		dev_cnt_batchEst, dev_nNonEmptyCells, dev_orderedQueryPntIDs);
 		cout<<"\n** ERROR FROM KERNEL LAUNCH OF BATCH ESTIMATOR: "<<cudaGetLastError();
 		// find the size of the number of results
-		errCode=cudaMemcpy( cnt_batchEst, dev_cnt_batchEst, sizeof(unsigned int) * NUMRANDINDEXES * NUMRANDROTAIONS, cudaMemcpyDeviceToHost);
+		errCode=cudaMemcpy( cnt_batchEst, dev_cnt_batchEst, sizeof(unsigned int) * NUMRANDINDEXES * NUMRANDROTATIONS, cudaMemcpyDeviceToHost);
 		if(errCode != cudaSuccess) {
 		cout << "\nError: getting cnt for batch estimate from GPU Got error with code " << errCode << endl; 
 		}
 		else
 		{
-			for( unsigned int i=0; i<NUMRANDINDEXES * NUMRANDROTAIONS; i++ ) {
+			for( unsigned int i=0; i<NUMRANDINDEXES * NUMRANDROTATIONS; i++ ) {
 				printf("\nGPU: result set size for estimating the number of batches (sampled) for index %d: %u", i, cnt_batchEst[i]);
 			}
 			
@@ -227,7 +227,7 @@ unsigned long long callGPUBatchEst(unsigned int DBSIZE, DTYPE* dev_database, DTY
 	unsigned int batchSum = 0;
 
 	printf("\n");
-	for( unsigned int i=0; i<NUMRANDINDEXES * NUMRANDROTAIONS; i++ ) {
+	for( unsigned int i=0; i<NUMRANDINDEXES * NUMRANDROTATIONS; i++ ) {
 		printf("\nIndex %d batches", i);
 		printf("\n================");
 
@@ -281,7 +281,7 @@ unsigned long long callGPUBatchEst(unsigned int DBSIZE, DTYPE* dev_database, DTY
 	{
 		unsigned int smallestBatchNum = UINT_MAX;
 		unsigned int * smallestRetNumBatchesPtr = retNumBatches;
-		for( unsigned int i=0; i<NUMRANDINDEXES*NUMRANDROTAIONS; i++ )
+		for( unsigned int i=0; i<NUMRANDINDEXES*NUMRANDROTATIONS; i++ )
 		{
 			if( retNumBatches[i] < smallestBatchNum )
 			{
@@ -318,7 +318,7 @@ void distanceTableNDGridBatches(std::vector<std::vector<std::vector<DTYPE>>> * a
 {
 	// create total num empty cells for all indexes variable
 	unsigned int totalNNonemptyCells = 0;
-	for( int i=0; i<NUMRANDINDEXES * NUMRANDROTAIONS; i ++)
+	for( int i=0; i<NUMRANDINDEXES * NUMRANDROTATIONS; i ++)
 	{
 		totalNNonemptyCells += allNNonEmptyCells[i];
 	}
@@ -362,14 +362,14 @@ void distanceTableNDGridBatches(std::vector<std::vector<std::vector<DTYPE>>> * a
 	
 	printf("\nIn main GPU method: DBSIZE is: %u",*DBSIZE);cout.flush();
 	
-	DTYPE* database= (DTYPE*)malloc(sizeof(DTYPE)*(*DBSIZE)*(GPUNUMDIM)*(NUMRANDROTAIONS));  
+	DTYPE* database= (DTYPE*)malloc(sizeof(DTYPE)*(*DBSIZE)*(GPUNUMDIM)*(NUMRANDROTATIONS));  
 	DTYPE* dev_database;
 	
 	//allocate memory on device:
-	gpuErrchk(cudaMalloc( (void**)&dev_database, sizeof(DTYPE)*(GPUNUMDIM)*(*DBSIZE)*(NUMRANDROTAIONS)));
+	gpuErrchk(cudaMalloc( (void**)&dev_database, sizeof(DTYPE)*(GPUNUMDIM)*(*DBSIZE)*(NUMRANDROTATIONS)));
 
 	//copy the database from the ND vector to the array:
-	for( int i=0; i<NUMRANDROTAIONS; i++ ) {
+	for( int i=0; i<NUMRANDROTATIONS; i++ ) {
 		for (int j=0; j<(*DBSIZE); j++){
 			std::copy((*allRotatedNDdataPoints)[i][j].begin(), (*allRotatedNDdataPoints)[i][j].end(), database+((*DBSIZE)*GPUNUMDIM*i)+(j*(GPUNUMDIM)));
 		}
@@ -377,7 +377,7 @@ void distanceTableNDGridBatches(std::vector<std::vector<std::vector<DTYPE>>> * a
 
 
 	//copy database to the device
-	gpuErrchk(cudaMemcpy(dev_database, database, sizeof(DTYPE)*(GPUNUMDIM)*(*DBSIZE)*(NUMRANDROTAIONS), cudaMemcpyHostToDevice));
+	gpuErrchk(cudaMemcpy(dev_database, database, sizeof(DTYPE)*(GPUNUMDIM)*(*DBSIZE)*(NUMRANDROTATIONS), cudaMemcpyHostToDevice));
 
 	///////////////////////////////////
 	//END COPY THE DATABASE TO THE GPU
@@ -459,10 +459,10 @@ void distanceTableNDGridBatches(std::vector<std::vector<std::vector<DTYPE>>> * a
 	unsigned int * dev_allIndexLookupArr;
 
 	//allocate memory on device:
-	gpuErrchk(cudaMalloc( (void**)&dev_allIndexLookupArr, sizeof(unsigned int)*(*DBSIZE)*(NUMRANDINDEXES)*(NUMRANDROTAIONS)));
+	gpuErrchk(cudaMalloc( (void**)&dev_allIndexLookupArr, sizeof(unsigned int)*(*DBSIZE)*(NUMRANDINDEXES)*(NUMRANDROTATIONS)));
 
 	//copy lookup array to the device:
-	gpuErrchk(cudaMemcpy(dev_allIndexLookupArr, allIndexLookupArr, sizeof(unsigned int)*(*DBSIZE)*(NUMRANDINDEXES)*(NUMRANDROTAIONS), cudaMemcpyHostToDevice));
+	gpuErrchk(cudaMemcpy(dev_allIndexLookupArr, allIndexLookupArr, sizeof(unsigned int)*(*DBSIZE)*(NUMRANDINDEXES)*(NUMRANDROTATIONS), cudaMemcpyHostToDevice));
 	
 	///////////////////////////////////
 	//END COPY THE LOOKUP ARRAY TO THE DATA ELEMS TO THE GPU
@@ -502,17 +502,17 @@ void distanceTableNDGridBatches(std::vector<std::vector<std::vector<DTYPE>>> * a
 	//minimum boundary of the grid:
 	DTYPE* dev_allMinArr;
 	//Allocate on the device
-	gpuErrchk(cudaMalloc((void**)&dev_allMinArr, sizeof(DTYPE)*(NUMINDEXEDDIM)*(NUMRANDINDEXES)*(NUMRANDROTAIONS)));
+	gpuErrchk(cudaMalloc((void**)&dev_allMinArr, sizeof(DTYPE)*(NUMINDEXEDDIM)*(NUMRANDINDEXES)*(NUMRANDROTATIONS)));
 	
-	gpuErrchk(cudaMemcpy( dev_allMinArr, allMinArr, sizeof(DTYPE)*(NUMINDEXEDDIM)*(NUMRANDINDEXES)*(NUMRANDROTAIONS), cudaMemcpyHostToDevice ));
+	gpuErrchk(cudaMemcpy( dev_allMinArr, allMinArr, sizeof(DTYPE)*(NUMINDEXEDDIM)*(NUMRANDINDEXES)*(NUMRANDROTATIONS), cudaMemcpyHostToDevice ));
 
 	//number of cells in each dimension
 	unsigned int * dev_allNCells;
 
 	//Allocate on the device
-	gpuErrchk(cudaMalloc((void**)&dev_allNCells, sizeof(unsigned int)*(NUMINDEXEDDIM)*(NUMRANDINDEXES)*(NUMRANDROTAIONS)));
+	gpuErrchk(cudaMalloc((void**)&dev_allNCells, sizeof(unsigned int)*(NUMINDEXEDDIM)*(NUMRANDINDEXES)*(NUMRANDROTATIONS)));
 
-	gpuErrchk(cudaMemcpy( dev_allNCells, allNCells, sizeof(unsigned int)*(NUMINDEXEDDIM)*(NUMRANDINDEXES)*(NUMRANDROTAIONS), cudaMemcpyHostToDevice ));
+	gpuErrchk(cudaMemcpy( dev_allNCells, allNCells, sizeof(unsigned int)*(NUMINDEXEDDIM)*(NUMRANDINDEXES)*(NUMRANDROTATIONS), cudaMemcpyHostToDevice ));
 
 	///////////////////////////////////
 	//END COPY GRID DIMENSIONS TO THE GPU
@@ -571,9 +571,9 @@ void distanceTableNDGridBatches(std::vector<std::vector<std::vector<DTYPE>>> * a
 	unsigned int * dev_allNNonEmptyCells;
 	
 	//Allocate on the device
-	gpuErrchk(cudaMalloc((void**)&dev_allNNonEmptyCells, sizeof(unsigned int)*(NUMRANDINDEXES)*(NUMRANDROTAIONS)));
+	gpuErrchk(cudaMalloc((void**)&dev_allNNonEmptyCells, sizeof(unsigned int)*(NUMRANDINDEXES)*(NUMRANDROTATIONS)));
 	//copy to device
-	gpuErrchk(cudaMemcpy( dev_allNNonEmptyCells, allNNonEmptyCells, sizeof(unsigned int)*(NUMRANDINDEXES)*(NUMRANDROTAIONS), cudaMemcpyHostToDevice ));
+	gpuErrchk(cudaMemcpy( dev_allNNonEmptyCells, allNNonEmptyCells, sizeof(unsigned int)*(NUMRANDINDEXES)*(NUMRANDROTATIONS), cudaMemcpyHostToDevice ));
 
 	///////////////////////////////////
 	//NUMBER OF NON-EMPTY CELLS
@@ -625,16 +625,16 @@ void distanceTableNDGridBatches(std::vector<std::vector<std::vector<DTYPE>>> * a
 	// find start and stop positions for each index for batch estimator
 	//////////////////////////////////
 	gridCellLookup ** startGridPtrs;
-	startGridPtrs = (gridCellLookup **)malloc(sizeof(gridCellLookup *) * NUMRANDINDEXES * NUMRANDROTAIONS);
+	startGridPtrs = (gridCellLookup **)malloc(sizeof(gridCellLookup *) * NUMRANDINDEXES * NUMRANDROTATIONS);
 	gridCellLookup ** stopGridPtrs;
-	stopGridPtrs = (gridCellLookup **)malloc(sizeof(gridCellLookup *) * NUMRANDINDEXES * NUMRANDROTAIONS);
+	stopGridPtrs = (gridCellLookup **)malloc(sizeof(gridCellLookup *) * NUMRANDINDEXES * NUMRANDROTATIONS);
 	grid ** startIndexPtrs;
-	startIndexPtrs = (grid **)malloc(sizeof(grid *) * NUMRANDINDEXES * NUMRANDROTAIONS);
+	startIndexPtrs = (grid **)malloc(sizeof(grid *) * NUMRANDINDEXES * NUMRANDROTATIONS);
 
 	gridCellLookup * startGridPtr = dev_allGridCellLookupArr;
 	grid * startIndexPtr = dev_allGrids;
 	
-	for(int i = 0; i<NUMRANDINDEXES * NUMRANDROTAIONS; i++)
+	for(int i = 0; i<NUMRANDINDEXES * NUMRANDROTATIONS; i++)
 	{
 		startGridPtrs[i] = startGridPtr;
 		startIndexPtrs[i] = startIndexPtr;
@@ -646,16 +646,16 @@ void distanceTableNDGridBatches(std::vector<std::vector<std::vector<DTYPE>>> * a
 	}
 
 	gridCellLookup ** dev_startGridPtrs;
-	gpuErrchk(cudaMalloc((void**)&dev_startGridPtrs, sizeof(gridCellLookup *) * NUMRANDINDEXES * NUMRANDROTAIONS));
-	gpuErrchk(cudaMemcpy( dev_startGridPtrs, startGridPtrs, sizeof(gridCellLookup *) * NUMRANDINDEXES * NUMRANDROTAIONS, cudaMemcpyHostToDevice ));
+	gpuErrchk(cudaMalloc((void**)&dev_startGridPtrs, sizeof(gridCellLookup *) * NUMRANDINDEXES * NUMRANDROTATIONS));
+	gpuErrchk(cudaMemcpy( dev_startGridPtrs, startGridPtrs, sizeof(gridCellLookup *) * NUMRANDINDEXES * NUMRANDROTATIONS, cudaMemcpyHostToDevice ));
 
 	gridCellLookup ** dev_stopGridPtrs;
-	gpuErrchk(cudaMalloc((void**)&dev_stopGridPtrs, sizeof(gridCellLookup *) * NUMRANDINDEXES * NUMRANDROTAIONS));
-	gpuErrchk(cudaMemcpy( dev_stopGridPtrs,stopGridPtrs, sizeof(gridCellLookup *) * NUMRANDINDEXES * NUMRANDROTAIONS, cudaMemcpyHostToDevice ));
+	gpuErrchk(cudaMalloc((void**)&dev_stopGridPtrs, sizeof(gridCellLookup *) * NUMRANDINDEXES * NUMRANDROTATIONS));
+	gpuErrchk(cudaMemcpy( dev_stopGridPtrs,stopGridPtrs, sizeof(gridCellLookup *) * NUMRANDINDEXES * NUMRANDROTATIONS, cudaMemcpyHostToDevice ));
 
 	grid ** dev_startIndexPtrs;
-	gpuErrchk(cudaMalloc((void**)&dev_startIndexPtrs, sizeof(grid *) * NUMRANDINDEXES * NUMRANDROTAIONS));
-	gpuErrchk(cudaMemcpy( dev_startIndexPtrs, startIndexPtrs, sizeof(grid *) * NUMRANDINDEXES * NUMRANDROTAIONS, cudaMemcpyHostToDevice ));
+	gpuErrchk(cudaMalloc((void**)&dev_startIndexPtrs, sizeof(grid *) * NUMRANDINDEXES * NUMRANDROTATIONS));
+	gpuErrchk(cudaMemcpy( dev_startIndexPtrs, startIndexPtrs, sizeof(grid *) * NUMRANDINDEXES * NUMRANDROTATIONS, cudaMemcpyHostToDevice ));
 
 	//////////////////////////////////
 	// End find start and stop positions for each index for batch estimator
@@ -663,7 +663,7 @@ void distanceTableNDGridBatches(std::vector<std::vector<std::vector<DTYPE>>> * a
 
 
 	unsigned long long estimatedNeighbors=0;	
-	unsigned int * numBatchesEachIndex = (unsigned int *)malloc(sizeof(unsigned int) * NUMRANDINDEXES * NUMRANDROTAIONS);
+	unsigned int * numBatchesEachIndex = (unsigned int *)malloc(sizeof(unsigned int) * NUMRANDINDEXES * NUMRANDROTATIONS);
 	unsigned int GPUBufferSize=0;
 
 	double tstartbatchest=omp_get_wtime();
@@ -678,7 +678,7 @@ void distanceTableNDGridBatches(std::vector<std::vector<std::vector<DTYPE>>> * a
 	// Find largest number of batches
 	unsigned int largestNumBatches = 0;
 	unsigned int totalNumBatches = 0;
-	for( int i=0; i<NUMRANDINDEXES * NUMRANDROTAIONS; i++ ) {
+	for( int i=0; i<NUMRANDINDEXES * NUMRANDROTATIONS; i++ ) {
 		// numBatchesEachIndex[i] = numBatches * batchDivider[i];
 		
 		// printf("\nAdjusted numBatches for index %d: %d", i, numBatchesEachIndex[i]);
@@ -702,7 +702,6 @@ void distanceTableNDGridBatches(std::vector<std::vector<std::vector<DTYPE>>> * a
 	free(startIndexPtrs);
 
 
-	return;
 
 	//initialize new neighbortable. resize to the number of batches	
 	//Only use this if using unicomp
@@ -1050,6 +1049,7 @@ void distanceTableNDGridBatches(std::vector<std::vector<std::vector<DTYPE>>> * a
 			for(int indexGroup=0; indexGroup<indexGroups->size(); indexGroup++) {
 				// get index
 				unsigned int whichIndex = (*indexGroups)[indexGroup].index;
+				unsigned int whichDatabase = whichIndex % NUMRANDROTATIONS;
 
 				if( i < numBatchesEachIndex[indexGroup] ) {
 					
@@ -1098,7 +1098,7 @@ void distanceTableNDGridBatches(std::vector<std::vector<std::vector<DTYPE>>> * a
 					//execute kernel	
 					//0 is shared memory pool
 					kernelNDGridIndexGlobal<<< TOTALBLOCKS, BLOCKSIZE, 0, stream[tid]>>>(dev_debug1, dev_debug2, &dev_N[tid], 
-						&dev_offset[tid], &dev_indexGroupOffset[tid], dev_database, dev_epsilon, dev_allGrids+gridIncrement, dev_allIndexLookupArr+(whichIndex * (*DBSIZE)), 
+						&dev_offset[tid], &dev_indexGroupOffset[tid], dev_database+(whichDatabase * (*DBSIZE) * GPUNUMDIM), dev_epsilon, dev_allGrids+gridIncrement, dev_allIndexLookupArr+(whichIndex * (*DBSIZE)), 
 						dev_allGridCellLookupArr+gridIncrement, dev_allGridCellLookupArr+gridIncrement+allNNonEmptyCells[whichIndex], dev_allMinArr+(whichIndex * NUMINDEXEDDIM), 
 						dev_allNCells+(whichIndex * NUMINDEXEDDIM), dev_orderedIndexPntIDs, &dev_cnt[tid], dev_pointIDKey[tid], dev_pointInDistValue[tid], 
 						dev_workCounts);
@@ -1286,9 +1286,8 @@ void distanceTableNDGridBatches(std::vector<std::vector<std::vector<DTYPE>>> * a
 
 	printf("\nTotal number of kernel invocations: %d", numKernelInvocations);
 
-	printf("\nTotal Kernel Invocation Time: %f", totalKernelTime);
-	printf("\nTable construct time: %f", totalTableConstructTime);
-	printf("\nTime to estimate batches: %f",tendbatchest - tstartbatchest);
+	// printf("\nTotal Kernel Invocation Time: %f", totalKernelTime);
+	// printf("\nTable construct time: %f", totalTableConstructTime);
 
 	
 	
@@ -1386,6 +1385,8 @@ void distanceTableNDGridBatches(std::vector<std::vector<std::vector<DTYPE>>> * a
 	printf("\nTime freeing memory: %f", tFreeEnd - tFreeStart);
 	// }
 	cout<<"\n** last error at end of fn batches (could be from freeing memory): "<<cudaGetLastError();
+
+	printf("\nTime to estimate batches: %f",tendbatchest - tstartbatchest);
 
 }
 

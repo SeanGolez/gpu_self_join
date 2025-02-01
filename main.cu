@@ -171,7 +171,7 @@ int main(int argc, char *argv[])
 	std::vector<std::vector<std::vector<DTYPE>>> allRotatedNDdataPoints;
 	
 	// generate random point rotations
-	for( int i = 0; i < NUMRANDROTAIONS; i++ ) {
+	for( int i = 0; i < NUMRANDROTATIONS; i++ ) {
 		printf("\nRotation %d", i+1);
 		printf("\n~~~~~~~~~~~");
 
@@ -208,13 +208,13 @@ int main(int argc, char *argv[])
 
 	// inititalize arrays
 	std::vector<std::vector<workArrayPnt>> allTotalPointsWork;
-	DTYPE *allMinArr = new DTYPE[NUMINDEXEDDIM * NUMRANDINDEXES * NUMRANDROTAIONS];
-	unsigned int *allNCells = new unsigned int[NUMINDEXEDDIM * NUMRANDINDEXES * NUMRANDROTAIONS];
-	unsigned int *allNNonEmptyCells = new unsigned int[NUMRANDINDEXES * NUMRANDROTAIONS];
+	DTYPE *allMinArr = new DTYPE[NUMINDEXEDDIM * NUMRANDINDEXES * NUMRANDROTATIONS];
+	unsigned int *allNCells = new unsigned int[NUMINDEXEDDIM * NUMRANDINDEXES * NUMRANDROTATIONS];
+	unsigned int *allNNonEmptyCells = new unsigned int[NUMRANDINDEXES * NUMRANDROTATIONS];
 
 	std::vector<struct grid> allIndexVec;
 	std::vector<struct gridCellLookup> allGridCellLookupArrVec;
-	unsigned int *allIndexLookupArr = new unsigned int[NDdataPoints.size() * NUMRANDINDEXES * NUMRANDROTAIONS];
+	unsigned int *allIndexLookupArr = new unsigned int[NDdataPoints.size() * NUMRANDINDEXES * NUMRANDROTATIONS];
 
 	// maps each non empty cell to its adjacent cells, including itself
 	// get all incrementors to find adjacent cells (vectors to add to position to get each adjecent cell)
@@ -286,7 +286,7 @@ int main(int argc, char *argv[])
 		}
 		#endif
 
-		for( int rotationIdx = 0; rotationIdx < NUMRANDROTAIONS; rotationIdx++ )
+		for( int rotationIdx = 0; rotationIdx < NUMRANDROTATIONS; rotationIdx++ )
 		{
 			// display the offset
 			printf("\n\n+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+");
@@ -398,7 +398,7 @@ int main(int argc, char *argv[])
 		unsigned int whichIdx;
 		unsigned int leastDistCalcs = UINT_MAX;
 		// loop through each "random" index
-		for (int j = 0; j < NUMRANDINDEXES * NUMRANDROTAIONS; j++)
+		for (int j = 0; j < NUMRANDINDEXES * NUMRANDROTATIONS; j++)
 		{
 			if (allTotalPointsWork[j][i].numDistCalcs < leastDistCalcs)
 			{
@@ -467,7 +467,7 @@ int main(int argc, char *argv[])
 	// get divider to adjust batches to index size
 	//DTYPE * batchDivider = (DTYPE *)malloc(sizeof(DTYPE) * NUMRANDINDEXES);
 
-	for(int i=0; i<NUMRANDINDEXES * NUMRANDROTAIONS; i++) {
+	for(int i=0; i<NUMRANDINDEXES * NUMRANDROTATIONS; i++) {
         unsigned int count = std::count_if(indexPoints.begin(), indexPoints.end(), [&i](const indexArrayPnt& p) {
             return p.whichIndex == i; // Compare whichIndex with i
         });
@@ -495,17 +495,17 @@ int main(int argc, char *argv[])
 
 	// output size of each array in byes
 	unsigned int totalNNonemptyCells = 0;
-	for( int i=0; i<NUMRANDINDEXES * NUMRANDROTAIONS; i ++)
+	for( int i=0; i<NUMRANDINDEXES * NUMRANDROTATIONS; i ++)
 	{
 		totalNNonemptyCells += allNNonEmptyCells[i];
 	}
 
 	printf("\nSize of allIndex: %lu MB", (sizeof(struct grid)*(totalNNonemptyCells))/(1024*1024));
-	printf("\nSize of allIndexLookupArr: %lu MB", (sizeof(unsigned int)*(NDdataPoints.size())*(NUMRANDINDEXES)*(NUMRANDROTAIONS))/(1024*1024));
+	printf("\nSize of allIndexLookupArr: %lu MB", (sizeof(unsigned int)*(NDdataPoints.size())*(NUMRANDINDEXES)*(NUMRANDROTATIONS))/(1024*1024));
 	printf("\nSize of allGridCellLookupArr: %lu MB", (sizeof(struct gridCellLookup)*(totalNNonemptyCells))/(1024*1024));
-	printf("\nSize of allMinArr: %lu MB", (sizeof(DTYPE)*(NUMINDEXEDDIM)*(NUMRANDINDEXES)*(NUMRANDROTAIONS))/(1024*1024));
-	printf("\nSize of allNCells: %lu MB", (sizeof(unsigned int)*(NUMINDEXEDDIM)*(NUMRANDINDEXES)*(NUMRANDROTAIONS))/(1024*1024));
-	printf("\nSize of allNNonEmptyCells: %lu MB\n", (sizeof(unsigned int)*(NUMRANDINDEXES)*(NUMRANDROTAIONS))/(1024*1024));
+	printf("\nSize of allMinArr: %lu MB", (sizeof(DTYPE)*(NUMINDEXEDDIM)*(NUMRANDINDEXES)*(NUMRANDROTATIONS))/(1024*1024));
+	printf("\nSize of allNCells: %lu MB", (sizeof(unsigned int)*(NUMINDEXEDDIM)*(NUMRANDINDEXES)*(NUMRANDROTATIONS))/(1024*1024));
+	printf("\nSize of allNNonEmptyCells: %lu MB\n", (sizeof(unsigned int)*(NUMRANDINDEXES)*(NUMRANDROTATIONS))/(1024*1024));
 
 	uint64_t totalNeighbors = 0;
 	neighborTableLookup *neighborTable = new neighborTableLookup[NDdataPoints.size()];
