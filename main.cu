@@ -144,7 +144,6 @@ int main(int argc, char *argv[])
 	printf("\n*****************\nWarming up GPU:\n*****************\n");
 	warmUpGPU();
 	printf("\n*****************\n");
-	double totalTime = 0;
 
 	double timeReorderByDimVariance = 0;
 	#if REORDER == 1
@@ -517,28 +516,30 @@ int main(int argc, char *argv[])
 
 	pointersToNeighbors.clear();
 
+	double entire_time_end = omp_get_wtime();
+
 	double tstart = omp_get_wtime();
 
-	distanceTableNDGridBatches(&allRotatedNDdataPoints, &epsilon, allIndex, allGridCellLookupArr, allNNonEmptyCells, allMinArr, allNCells, allIndexLookupArr, neighborTable, &pointersToNeighbors, &totalNeighbors, workCounts, orderedIndexPntIDs, &indexGroups, orderedQueryPntIDs, whichIndexPoints);
+	double kernelTimeWithoutBatchEstimator;
+	kernelTimeWithoutBatchEstimator = distanceTableNDGridBatches(&allRotatedNDdataPoints, &epsilon, allIndex, allGridCellLookupArr, allNNonEmptyCells, allMinArr, allNCells, allIndexLookupArr, neighborTable, &pointersToNeighbors, &totalNeighbors, workCounts, orderedIndexPntIDs, &indexGroups, orderedQueryPntIDs, whichIndexPoints);
 
 	double tend = omp_get_wtime();
 
-	totalTime += (tend - tstart);
-
 	printf("\nTime to get neighbors: %f\n", (tend - tstart));
 
-	double entire_time_end = omp_get_wtime();
-
+	
 	printf("\nTotal time: %f\n", (entire_time_end - entire_time_start) + timeReorderByDimVariance);
+	double totalTime = (tend - entire_time_start) + timeReorderByDimVariance;
+	double totalTimeMinusBatchEstimator = (entire_time_end - entire_time_start) + kernelTimeWithoutBatchEstimator + timeReorderByDimVariance;
 
-	gpu_stats << totalTime << ", " << inputFname << ", " << epsilon << ", " << totalNeighbors << ", GPUNUMDIM/NUMINDEXEDDIM/NUMRANDINDEXES/ILP/STAMP/SORT/REORDER/SHORTCIRCUIT/QUERYREORDER/DTYPE(float/double): " << GPUNUMDIM << ", " << NUMINDEXEDDIM << ", " << NUMRANDINDEXES << ", " << ILP << ", " << STAMP << ", " << SORT << ", " << REORDER << ", " << SHORTCIRCUIT << ", " << QUERYREORDER << ", " << STR(DTYPE) << endl;
+	gpu_stats << totalTime << ", " << inputFname << ", " << epsilon << ", " << totalNeighbors << ", GPUNUMDIM/NUMINDEXEDDIM/NUMRANDINDEXES/NUMRANDROTATIONS/NUMPAIRROTATIONS/ILP/STAMP/SORT/REORDER/SHORTCIRCUIT/QUERYREORDER/DTYPE(float/double): " << GPUNUMDIM << ", " << NUMINDEXEDDIM << ", " << NUMRANDINDEXES << ", " << NUMRANDROTATIONS << ", " << NUMPAIRROTATIONS << ", " << ILP << ", " << STAMP << ", " << SORT << ", " << REORDER << ", " << SHORTCIRCUIT << ", " << QUERYREORDER << ", " << STR(DTYPE) << endl;
 	gpu_stats.close();
 
 	// remove after testing
 	#if TESTSCRIPT == 1
 	char test_fname[] = "py_test_stats.txt";
 	gpu_stats.open(test_fname, ios::app);
-	gpu_stats << inputFname << ',' << epsilon << ',' << NUMRANDINDEXES << ',' << (entire_time_end - entire_time_start) << ',' << (tend - tstart) << ',' << workCounts[0] << ',' << workCounts[1] << ',' << totalNeighbors << ',' << RANDOMOFFSETSAMEALLDIM << ',' << FIXEDOFFSETALLDIM << ',' << RANDOMOFFSETFOREACHDIM << endl;
+	gpu_stats << inputFname << ',' << epsilon << ',' << NUMRANDINDEXES << ',' << NUMRANDROTATIONS << ',' << totalTimeMinusBatchEstimator << ',' << kernelTimeWithoutBatchEstimator << ',' << workCounts[0] << ',' << workCounts[1] << ',' << totalNeighbors << ',' << RANDOMOFFSETSAMEALLDIM << ',' << FIXEDOFFSETALLDIM << ',' << RANDOMOFFSETFOREACHDIM << endl;
 	gpu_stats.close();
 	#endif
 

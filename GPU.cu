@@ -310,7 +310,7 @@ return estimatedTotalSizeWithAlpha;
 
 }
 
-void distanceTableNDGridBatches(std::vector<std::vector<std::vector<DTYPE>>> * allRotatedNDdataPoints, DTYPE * epsilon, struct grid * allIndex, 
+double distanceTableNDGridBatches(std::vector<std::vector<std::vector<DTYPE>>> * allRotatedNDdataPoints, DTYPE * epsilon, struct grid * allIndex, 
 	struct gridCellLookup * allGridCellLookupArr, unsigned int * allNNonEmptyCells, DTYPE* allMinArr, unsigned int * allNCells, 
 	unsigned int * allIndexLookupArr, struct neighborTableLookup * neighborTable, std::vector<struct neighborDataPtrs> * pointersToNeighbors, 
 	uint64_t * totalNeighbors, CTYPE* workCounts, unsigned int * orderedIndexPntIDs, std::vector<indexArrayPntGroups> * indexGroups, unsigned int * orderedQueryPntIDs,
@@ -1387,6 +1387,8 @@ void distanceTableNDGridBatches(std::vector<std::vector<std::vector<DTYPE>>> * a
 	cout<<"\n** last error at end of fn batches (could be from freeing memory): "<<cudaGetLastError();
 
 	printf("\nTime to estimate batches: %f",tendbatchest - tstartbatchest);
+
+	return (tKernelResultsEnd-tKernelResultsStart) - (tendbatchest - tstartbatchest);
 
 }
 
