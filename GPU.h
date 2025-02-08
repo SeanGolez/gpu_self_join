@@ -48,4 +48,4 @@ void constructNeighborTableKeyValueWithPtrsBatchMaskArray(int * pointIDKey, int 
 void computeWorkDifficulty(unsigned int * outputOrderedQueryPntIDs, struct gridCellLookup * gridCellLookupArr, unsigned int * nNonEmptyCells, unsigned int * indexLookupArr, struct grid * index);
 
 
-void rotateOnGPU(std::vector<std::vector<DTYPE>> * NDdataPoints, std::vector<std::vector<DTYPE>> * rotatedNDdataPoints);
+void rotateOnGPU(DTYPE * dev_database, const unsigned int DBSIZE, const unsigned int whichDatabase);

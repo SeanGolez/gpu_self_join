@@ -154,18 +154,44 @@ int main(int argc, char *argv[])
 		printf("\nTime to reorder: %f", timeReorderByDimVariance);
 	#endif
 
-	/*
-	// Print the og
-	printf("\nOriginal Database:\n");
-    for (const auto& row : NDdataPoints) {
-        for (const auto& elem : row) {
-            cout << elem << " ";
-        }
-        cout << endl;
-    }
+	///////////////////////////////////
+	//COPY THE DATABASE TO THE GPU
+	///////////////////////////////////
+	//CUDA error code:
+	cudaError_t errCode;
 
-	cout << endl;
-	*/
+	unsigned int DBSIZE;
+	DBSIZE=NDdataPoints.size();
+
+	DTYPE* database = (DTYPE*)malloc(sizeof(DTYPE)*(DBSIZE)*(GPUNUMDIM)*(NUMRANDROTATIONS));  
+	DTYPE* dev_database;
+	
+	//allocate memory on device:
+	errCode=cudaMalloc( (void**)&dev_database, sizeof(DTYPE)*(DBSIZE)*(GPUNUMDIM)*(NUMRANDROTATIONS));		
+	if(errCode != cudaSuccess) {
+	cout << "\nError: database alloc -- error with code " << errCode << endl; cout.flush(); 
+	}
+
+
+	//copy the database from the ND vector to the array, add copy for each random rotation:
+	for( int i=0; i<NUMRANDROTATIONS; i++ ){
+		for (int j=0; j<(DBSIZE); j++){
+			std::copy(NDdataPoints[j].begin(), NDdataPoints[j].end(), database+((DBSIZE)*GPUNUMDIM*i)+(j*(GPUNUMDIM)));
+		}
+	}
+
+
+	//copy database to the device
+	errCode=cudaMemcpy(dev_database, database, sizeof(DTYPE)*(DBSIZE)*(GPUNUMDIM)*(NUMRANDROTATIONS), cudaMemcpyHostToDevice);	
+	if(errCode != cudaSuccess) {
+	cout << "\nError: database Got error with code " << errCode << endl; 
+	}
+
+	///////////////////////////////////
+	//END COPY THE DATABASE TO THE GPU
+	///////////////////////////////////
+
+	double rotations_time_start = omp_get_wtime();
 
 	std::vector<std::vector<std::vector<DTYPE>>> allRotatedNDdataPoints;
 	
@@ -174,35 +200,42 @@ int main(int argc, char *argv[])
 		printf("\nRotation %d", i+1);
 		printf("\n~~~~~~~~~~~");
 
-		std::vector<std::vector<DTYPE>> rotatedNDdataPoints;
-
-		if( i== 0 ) {
-			rotatedNDdataPoints = NDdataPoints;
+		if( i == 0 ) {
 			printf("\nNo rotation");
 		}
 		else {
-			rotateOnGPU(&NDdataPoints, &rotatedNDdataPoints);
+			rotateOnGPU(dev_database, DBSIZE, i);
 		}
-		
-		/*
-		// Print the new
-		printf("\nRotated Database:\n");
-		for (const auto& row : rotatedNDdataPoints) {
-			for (const auto& elem : row) {
-				cout << elem << " ";
-			}
-			cout << endl;
-		}
-		*/
 
 		cout << endl;
-
-		allRotatedNDdataPoints.emplace_back(rotatedNDdataPoints);
 		printf("\n");
 	}
 
+	double rotations_time_end = omp_get_wtime();
+
+	printf("\nTime to get rotations: %f", (rotations_time_end-rotations_time_start));
 
 
+	errCode=cudaMemcpy(database, dev_database, sizeof(DTYPE)*(DBSIZE)*(GPUNUMDIM)*(NUMRANDROTATIONS), cudaMemcpyDeviceToHost);	
+	if(errCode != cudaSuccess) {
+	cout << "\nError: database Got error with code " << errCode << endl; 
+	}
+
+	//printf("\n\n");
+	for( int i=0; i<NUMRANDROTATIONS; i++ ){
+		std::vector<std::vector<DTYPE>> tmpDBVector;
+		for (int j=0; j<(DBSIZE); j++){
+			std::vector<DTYPE> tmpPointVector;
+			for( int k=0; k<GPUNUMDIM; k++ ){
+				//printf("%f, ", database[(DBSIZE*GPUNUMDIM*i) + (j*GPUNUMDIM) + k]);
+				tmpPointVector.emplace_back(database[(DBSIZE*GPUNUMDIM*i) + (j*GPUNUMDIM) + k]);
+			}
+			//printf("\n");
+			tmpDBVector.emplace_back(tmpPointVector);
+		}
+		//printf("\n\n");
+		allRotatedNDdataPoints.emplace_back(tmpDBVector);
+	}
 
 
 	// inititalize arrays
@@ -531,6 +564,7 @@ int main(int argc, char *argv[])
 	printf("\nTotal time: %f\n", (entire_time_end - entire_time_start) + timeReorderByDimVariance);
 	double totalTime = (tend - entire_time_start) + timeReorderByDimVariance;
 	double totalTimeMinusBatchEstimator = (entire_time_end - entire_time_start) + kernelTimeWithoutBatchEstimator + timeReorderByDimVariance;
+	printf("\nTotal time minus batch estimator: %f\n", (entire_time_end - entire_time_start) + kernelTimeWithoutBatchEstimator + timeReorderByDimVariance);
 
 	gpu_stats << totalTime << ", " << inputFname << ", " << epsilon << ", " << totalNeighbors << ", GPUNUMDIM/NUMINDEXEDDIM/NUMRANDINDEXES/NUMRANDROTATIONS/NUMPAIRROTATIONS/ILP/STAMP/SORT/REORDER/SHORTCIRCUIT/QUERYREORDER/DTYPE(float/double): " << GPUNUMDIM << ", " << NUMINDEXEDDIM << ", " << NUMRANDINDEXES << ", " << NUMRANDROTATIONS << ", " << NUMPAIRROTATIONS << ", " << ILP << ", " << STAMP << ", " << SORT << ", " << REORDER << ", " << SHORTCIRCUIT << ", " << QUERYREORDER << ", " << STR(DTYPE) << endl;
 	gpu_stats.close();
@@ -555,6 +589,8 @@ int main(int argc, char *argv[])
 	delete[] allGridCellLookupArr;
 	delete[] orderedIndexPntIDs;
 	delete[] whichIndexPoints;
+
+	cudaFree(dev_database);
 
 	// free(batchDivider);
 }

@@ -730,21 +730,24 @@ __global__ void kernelMapPointToNumDistCalcs(uint64_t * pointDistCalcArr, DTYPE*
 	}
 }
 
-__global__ void kernelPairwiseDatabaseRotation( DTYPE * database, unsigned int *N, DTYPE * theta, unsigned int * dimPair ) {
+__global__ void kernelPairwiseDatabaseRotation( DTYPE * database, const unsigned int N, const unsigned int whichDatabase, DTYPE * theta, unsigned int * dimPair ) {
 	unsigned int tid=threadIdx.x+ (blockIdx.x*BLOCKSIZE);
 
-	if (tid>=*N){
+	if (tid>=N){
 		return;
 	}
 
 	unsigned int pointID=tid*(GPUNUMDIM);
 
-	DTYPE dim_0 = database[pointID + dimPair[0]];
-	DTYPE dim_1 = database[pointID + dimPair[1]];
+	for( unsigned int i=0; i<NUMPAIRROTATIONS; i++ )
+	{
+		DTYPE dim_0 = database[pointID + dimPair[i * 2]];
+		DTYPE dim_1 = database[pointID + dimPair[i * 2 + 1]];
 
-	DTYPE new_dim_0 = (dim_0 * cos(*theta)) - (dim_1 * sin(*theta));
-	DTYPE new_dim_1 = (dim_0 * sin(*theta)) + (dim_1 * cos(*theta));
+		DTYPE new_dim_0 = (dim_0 * cos(theta[i])) - (dim_1 * sin(theta[i]));
+		DTYPE new_dim_1 = (dim_0 * sin(theta[i])) + (dim_1 * cos(theta[i]));
 
-	database[pointID + dimPair[0]] = new_dim_0;
-	database[pointID + dimPair[1]] = new_dim_1;
+		database[(N*GPUNUMDIM*whichDatabase) + pointID + dimPair[i * 2]] = new_dim_0;
+		database[(N*GPUNUMDIM*whichDatabase) + pointID + dimPair[i * 2 + 1]] = new_dim_1;
+	}
 }

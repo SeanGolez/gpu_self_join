@@ -38,4 +38,4 @@ __global__ void kernelIndexComputeAdjacentCells(uint64_t * cellDistCalcArr, uint
 __global__ void kernelMapPointToNumDistCalcs(uint64_t * pointDistCalcArr, DTYPE* database, unsigned int *N, DTYPE* epsilon, DTYPE* minArr, unsigned int * nCells, uint64_t *cellDistCalcArr,  uint64_t * uniqueCellArr, unsigned int * nNonEmptyCells);
 
 
-__global__ void kernelPairwiseDatabaseRotation( DTYPE * database, unsigned int *N, DTYPE * theta, unsigned int * dimPair );
+__global__ void kernelPairwiseDatabaseRotation( DTYPE * database, const unsigned int N, const unsigned int whichDatabase, DTYPE * theta, unsigned int * dimPair );
